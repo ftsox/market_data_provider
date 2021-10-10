@@ -38,6 +38,10 @@ export interface IFtsoRegistryInstance extends Truffle.ContractInstance {
     txDetails?: Truffle.TransactionDetails
   ): Promise<string[]>;
 
+  getAllFtsos(
+    txDetails?: Truffle.TransactionDetails
+  ): Promise<string[]>;
+
   getSupportedFtsos(txDetails?: Truffle.TransactionDetails): Promise<string[]>;
 
   getSupportedIndices(txDetails?: Truffle.TransactionDetails): Promise<BN[]>;
@@ -85,6 +89,10 @@ export interface IFtsoRegistryInstance extends Truffle.ContractInstance {
 
     getFtsos(
       _indices: (number | BN | string)[],
+      txDetails?: Truffle.TransactionDetails
+    ): Promise<string[]>;
+
+    getAllFtsos(
       txDetails?: Truffle.TransactionDetails
     ): Promise<string[]>;
 

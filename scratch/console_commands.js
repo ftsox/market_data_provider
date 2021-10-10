@@ -109,7 +109,7 @@ ftsos = await Promise.all(symbols.map(async sym => await MockFtso.at(await ftsoR
 // x = await MockFtso.at(await ftsoRegistry.getFtsoBySymbol(sym))
 
 // ftsoAddresses = await Promise.all( symbols.map(async sym => await ftsoRegistry.getFtsoBySymbol(sym)) );
-ftsoAddressess = await ftsoRegistry.getAllFtsos();  // more efficient
+ftsoAddresses = await ftsoRegistry.getAllFtsos();  // more efficient
 // [
 //     '0xA1a9B8aB5BB798EeE536A23669AD744DCF8537a3',
 //     '0x157D6316475765F13348DfA897C503Af0161B232',
@@ -149,16 +149,17 @@ currencyIndices = new Map( symbols.map((c, i) => [c, ftsoIndices[i]]) );
 
 // Get list of existing providers for an index
 // xrpWhitelist = await voterWhitelister.getFtsoWhitelistedPriceProviders(currencyIndices.get('XRP'))
+// xrpWhitelist.length
 ftsoWhitelists = await Promise.all(ftsoSupportedIndices.map(async idx => await voterWhitelister.getFtsoWhitelistedPriceProviders(idx)));
 ftsoWhitelistsCounts = new Map( symbols.map((c, i) => [c, ftsoWhitelists[i].length]) )
-// xrpWhitelist.length
+
 
 
 
 // Get prices
-baseCurrency = 'USD'
-ccApiKey = process.env.CC_API_KEY
-ccApiUrl = `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${symbols.join()}&tsyms=${baseCurrency}&api_key=${ccApiKey}`
+baseCurrency = 'USD';
+ccApiKey = process.env.CC_API_KEY;
+ccApiUrl = `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${symbols.join()}&tsyms=${baseCurrency}&api_key=${ccApiKey}`;
 
 // https://www.twilio.com/blog/2017/08/http-requests-in-node-js.html
 const axios = require('axios');
