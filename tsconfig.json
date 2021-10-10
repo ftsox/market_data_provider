@@ -1,0 +1,23 @@
+{
+    "compilerOptions": {
+      "target": "es2018",
+      "module": "commonjs",
+      "strict": true,
+      "esModuleInterop": true,
+      "outDir": "dist",
+      "typeRoots": [
+        "test/types",
+        "node_modules/@types"
+      ]
+    },
+    "include": [
+      "./scripts", 
+      "./test", 
+      "./typechain", 
+      "./typechain-truffle", 
+      "./deployment/scripts", 
+      "deployment/test/deploy.ts", 
+    ],
+    "files": ["./hardhat.config.ts"]
+  }
+  
