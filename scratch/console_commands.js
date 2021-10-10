@@ -15,9 +15,9 @@
 
 // Better deploy to localhost
 // yarn hardhat compile 
-// yarn hardhat node
+// yarn hardhat node # separate window
 // yarn hardhat run ./deployment/scripts/deploy-mock-price-submitter.ts --network localhost
-
+// env CHAIN_CONFIG=scdev yarn hardhat run ./deployment/scripts/mock-price-provider.ts --network localhost
 
 /* 
     Logs (on node server)
