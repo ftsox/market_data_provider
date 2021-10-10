@@ -97,6 +97,8 @@ type AllEvents =
   | PriceRevealed;
 
 export interface IFtsoInstance extends Truffle.ContractInstance {
+  ASSET_PRICE_USD_DECIMALS(txDetails?: Truffle.TransactionDetails): Promise<BN>;
+
   active(txDetails?: Truffle.TransactionDetails): Promise<boolean>;
 
   getCurrentEpochId(txDetails?: Truffle.TransactionDetails): Promise<BN>;
@@ -139,6 +141,8 @@ export interface IFtsoInstance extends Truffle.ContractInstance {
   symbol(txDetails?: Truffle.TransactionDetails): Promise<string>;
 
   methods: {
+    ASSET_PRICE_USD_DECIMALS(txDetails?: Truffle.TransactionDetails): Promise<BN>;
+
     active(txDetails?: Truffle.TransactionDetails): Promise<boolean>;
 
     getCurrentEpochId(txDetails?: Truffle.TransactionDetails): Promise<BN>;

@@ -76,9 +76,9 @@ new BN(parseInt("0x488169aacb245a00", 16))
 accounts = await ethers.getSigners();
 
 // Get balance of addresses
-(await ethers.provider.getBalance(accounts[0].address)).toString()
+fromWei((await ethers.provider.getBalance(accounts[0].address)).toString())
 // (await ethers.provider.getBalance('0x46c283c599a5dC4CE614092eC31F354e89b4706F')).toString()
-fromWei((await ethers.provider.getBalance('0x46c283c599a5dC4CE614092eC31F354e89b4706F')).toString())
+// fromWei((await ethers.provider.getBalance('0x46c283c599a5dC4CE614092eC31F354e89b4706F')).toString())
 
 
 // Connect to priceSubmitter

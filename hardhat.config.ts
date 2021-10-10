@@ -109,6 +109,9 @@ const config: HardhatUserConfig = {
       chainId: 19,  // Songbird
       // TODO: add more params for prod
       // gas: 10000000,
+      accounts: [process.env.FTSO_PRIVATE_KEY ?? ''],
+      gas: 'auto',
+      gasPrice: 'auto',
     }
   },
   solidity: {
