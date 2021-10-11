@@ -87,6 +87,8 @@ MockPriceSubmitter = artifacts.require("MockPriceSubmitter");
 MockFtsoRegistry = artifacts.require("MockFtsoRegistry");
 MockVoterWhitelister = artifacts.require("MockVoterWhitelister");
 MockFtso = artifacts.require("MockNpmFtso");
+FtsoManager = artifacts.require("IFtsoManager");
+FtsoRewardManager = artifacts.require("IFtsoRewardManager");
 
 // priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122";
 // priceProviderAccount = web3.eth.accounts.privateKeyToAccount(priceProviderPrivateKey);
@@ -94,6 +96,12 @@ MockFtso = artifacts.require("MockNpmFtso");
 priceSubmitter = await MockPriceSubmitter.at("0x1000000000000000000000000000000000000003");
 ftsoRegistry = await MockFtsoRegistry.at(await priceSubmitter.getFtsoRegistry());
 voterWhitelister = await MockVoterWhitelister.at(await priceSubmitter.getVoterWhitelister());
+ftsoManager = await FtsoManager.at(await priceSubmitter.getFtsoManager());
+// ftsoRewardManager = await FtsoRewardManager.at(await ftsoManager.rewardManager()); 
+// ftsoManager interface doesn't include this function
+// can grab ABI from the explorer (https://songbird-explorer.flare.network/address/0xbfA12e4E1411B62EdA8B035d71735667422A6A9e/contracts)
+// and convert with this https://bia.is/tools/abi2solidity/
+ftsoRewardManager = await FtsoRewardManager.at('0xc5738334b972745067fFa666040fdeADc66Cb925');
 
 console.log(`Addresses:`)
 console.log(`\tpriceSubmitter:      ${priceSubmitter.address}`)     // 0x1000000000000000000000000000000000000003   
@@ -153,6 +161,34 @@ currencyIndices = new Map( symbols.map((c, i) => [c, ftsoIndices[i]]) );
 // xrpWhitelist.length
 ftsoWhitelists = await Promise.all(ftsoSupportedIndices.map(async idx => await voterWhitelister.getFtsoWhitelistedPriceProviders(idx)));
 ftsoWhitelistsCounts = new Map( symbols.map((c, i) => [c, ftsoWhitelists[i].length]) )
+
+
+
+//// Get data provider fee percentages
+currentProviderFees = await Promise.all( ftsoWhitelists[0].map( async address => (await ftsoRewardManager.getDataProviderCurrentFeePercentage(address)).toNumber() ) );
+console.log(`Number of rows: ${df.size / df.columns.length}`);
+futureProviderFeesRaw = await Promise.all( ftsoWhitelists[0].map( async address => await ftsoRewardManager.getDataProviderScheduledFeePercentageChanges(address) ) );
+futureProviderFees = []
+for (let i=0; i < ftsoWhitelists[0].length; i++) {
+    fpData = futureProviderFeesRaw[i]._feePercentageBIPS;
+    nChangesPending = fpData.length;
+    if (nChangesPending > 0) {
+        // latest one should be the most recent update
+        futureFee = fpData[nChangesPending-1].toNumber();
+        futureProviderFees.push(futureFee);
+    } else {
+        futureProviderFees.push(currentProviderFees[i]);
+    }
+}
+const dfd = require('danfojs-node');
+df = new dfd.DataFrame({'Addresses': ftsoWhitelists[0]});
+df.addColumn({'column': 'CurrentFee', 'values': currentProviderFees, inplace: true});
+df.addColumn({'column': 'FutureFee', 'values': futureProviderFees, inplace: true});
+df.addColumn({'column': 'FeeDiff', 'values': df['FutureFee'].sub(df['CurrentFee']), inplace: true});
+console.log(df.to_csv('providers.csv'))
+// df['FeeDiff'].mean()
+// df['FeeDiff'].std()
+// x = new dfd.Series(ftsoWhitelists[0])
 
 
 
@@ -248,3 +284,14 @@ submission = await priceSubmitter.submitPriceHashes(currentEpoch, ftsoIndices, h
 //     }
 //   }
 // await testSubmit()
+
+
+// Time getTime() command
+nRuns = 100;
+startTime = new Date();
+for (let i = 0; i < nRuns; i++) { x = await getTime() };
+endTime = new Date();
+totalTime = (endTime-startTime)/1000;
+avgTime = totalTime/nRuns;
+console.log(`Average time per run: ${avgTime} seconds`)
+// 1.33805 seconds

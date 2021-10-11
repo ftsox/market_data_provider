@@ -271,6 +271,7 @@ async function main() {
         // check for drift
         if (currentEpoch < currentEpochCheck) {
             currentEpoch = currentEpochCheck;
+            nextEpoch = currentEpoch + 1;
         }
         const start = currentEpoch * submitPeriod + firstEpochStartTime;
         next = nextEpoch * submitPeriod + firstEpochStartTime;
@@ -322,7 +323,6 @@ async function main() {
             console.log('Error submitting price hashes');
             console.log(error);
             errorCount += 1;
-            console.log(`Total errors now ${errorCount}`);
             // if this is due to late submission, then we need to increase our buffer
             // TODO(MCZ): change to analyzing the timestamp of the failed transaction - not easy to do with Hardhat errors
             // Sometimes this will be submitted in time but not confirmed in time, in which case we get a tx id
@@ -335,6 +335,9 @@ async function main() {
                 submitBuffer = Math.min(submitBuffer + 1, submitPeriod);    // cap buffer at submitPeriod
                 console.log(`Increasing submit buffer to ${submitBuffer} seconds`);
             }
+            // TODO(MCZ): also account for other network/provider issues, e.g. RPC node goes down
+            // Can use Towo as backup node
+            // https://hardhat.org/plugins/hardhat-change-network.html
         }
 
         // advance to start of reveal period
@@ -362,7 +365,6 @@ async function main() {
                 console.log('Error submitting price reveals');
                 console.log(error);
                 errorCount += 1;
-                console.log(`Total errors now ${errorCount}`);    
             }
         }
         
@@ -374,6 +376,7 @@ async function main() {
         // get remaining balance
         sgbBalance = fromWei((await ethers.provider.getBalance(priceProviderAccount.address)).toString());
         console.log(`SGB remaining: ${sgbBalance}`);
+        console.log(`Total errors now ${errorCount}`);
     }
 }
    

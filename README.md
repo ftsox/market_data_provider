@@ -39,9 +39,11 @@ yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network songbird
 
 To get logging of run output, use:
 ```
-yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network localhost 2>&1 | tee -a run.log
+yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network songbird 2>&1 | tee -a run.log
 tail -f run.log
 ```
+
+To run the main process in the background, use `screen` ([Explanation](https://askubuntu.com/questions/8653/how-to-keep-processes-running-after-ending-ssh-session/8657#8657)).
 
 
 See `scratch/console_commands.js` for some examples

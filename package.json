@@ -40,6 +40,7 @@
     "@typescript-eslint/parser": "4.28.3",
     "cli-progress": "3.9.0",
     "csv": "5.5.0",
+    "danfojs-node": "^0.3.3",
     "dotenv": "8.2.0",
     "eslint": "7.30.0",
     "got": "11.8.2",
