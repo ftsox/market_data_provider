@@ -5,3 +5,5 @@ artifacts
 .DS_Store
 nul
 *.ignore
+ignore
+run.log

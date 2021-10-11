@@ -3,7 +3,19 @@
 Songbird/Flare FTSO server.
 
 ## Setup
-First follow the `Getting Started` instructions in the [FTSO npm example package](https://www.npmjs.com/package/@flarenetwork/ftso_price_provider_kick_off_package) to get your local environment ready.
+<!-- First follow the `Getting Started` instructions in the [FTSO npm example package](https://www.npmjs.com/package/@flarenetwork/ftso_price_provider_kick_off_package) to get your local environment ready. -->
+Clone this repository.
+
+Install dependencies (if not already present):
+- [Node](https://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/setting-up-node-on-ec2-instance.html)
+```
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+. ~/.nvm/nvm.sh
+nvm install node
+npm install --global yarn
+```
+
+Run `yarn`.
 
 Then setup an `.env` file following `.env example` with the following:
 - Songbird/Flare node (see https://gitlab.com/flarenetwork/node-config)
@@ -20,6 +32,17 @@ yarn hardhat compile
 yarn hardhat run ./deployment/scripts/deploy-mock-price-submitter.ts --network localhost
 env CHAIN_CONFIG=scdev yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network localhost
 ```
+or to run on mainnet:
+```
+yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network songbird
+```
+
+To get logging of run output, use:
+```
+yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network localhost 2>&1 | tee -a run.log
+tail -f run.log
+```
+
 
 See `scratch/console_commands.js` for some examples
 

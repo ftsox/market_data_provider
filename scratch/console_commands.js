@@ -18,6 +18,7 @@
 // yarn hardhat node # separate window
 // yarn hardhat run ./deployment/scripts/deploy-mock-price-submitter.ts --network localhost
 // env CHAIN_CONFIG=scdev yarn hardhat run ./deployment/scripts/mock-price-provider.ts --network localhost
+// yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network localhost
 
 /* 
     Logs (on node server)
@@ -166,3 +167,84 @@ const axios = require('axios');
 pricesRaw = (response = await axios.get(ccApiUrl)).data
 prices = symbols.map(sym => pricesRaw[sym][baseCurrency])
 
+
+
+
+// Epoch periods
+
+var {
+    0: firstEpochStartTimeBN,
+    1: submitPeriodBN,
+    2: revealPeriodBN,
+} = (await ftsos[0].getPriceEpochConfiguration());
+
+var [firstEpochStartTime, submitPeriod, revealPeriod] = 
+    [firstEpochStartTimeBN, submitPeriodBN, revealPeriodBN].map(x => x.toNumber());
+
+console.log(`FTSO parameters:`);
+console.log(`\tfirstEpochStartTime: ${new Date(firstEpochStartTime * 1000)}`);
+console.log(`\tsubmitPeriod (secs): ${submitPeriod}`);
+console.log(`\trevealPeriod (secs): ${revealPeriod}`);
+
+
+//// Transaction submission scratch work
+// now = await getTime();
+// now = (new Date()).getTime() / 1000; 
+async function getTime() {
+    const blockNum = await ethers.provider.getBlockNumber();
+    const block = await ethers.provider.getBlock(blockNum);
+    const timestamp = block.timestamp;
+    return timestamp
+}
+
+priceProviderAccount = (await ethers.getSigners())[0];
+
+now = await getTime();
+startingEpoch = Math.floor((now - firstEpochStartTime) / submitPeriod) + 1; // add 1 since we are waiting for next epoch
+next = startingEpoch * submitPeriod + firstEpochStartTime;  // works since startingEpoch is actually next epoch here
+diff = Math.floor(next - now) + 1;
+currentEpoch = startingEpoch;
+nextEpoch = currentEpoch + 1;
+submitBuffer = 0;  
+
+// Get time and current epoch params
+now = await getTime();
+currentEpoch = Math.floor((now - firstEpochStartTime) / submitPeriod);
+nextEpoch = currentEpoch + 1;
+start = currentEpoch * submitPeriod + firstEpochStartTime;
+next = nextEpoch * submitPeriod + firstEpochStartTime;
+
+console.log("\n\nEpoch ", currentEpoch); 
+console.log(`\tEpoch start time: ${new Date(start * 1000)}`);
+console.log(`\tCurrent time:     ${new Date(now * 1000)}`);
+console.log(`\tEpoch end time:   ${new Date(next * 1000)}`);
+
+console.log(`Start submit for epoch ${currentEpoch}`);
+console.log(`\tStart getting prices:    ${Date()}`); 
+
+function submitPriceHash(price, random, address,) { return ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode([ "uint256", "uint256", "address" ], [price.toString(), random.toString(), address])) }
+function getPrice(epochId, asset) { return Math.floor(Math.random() * 200 + 10000); }
+function getRandom(epochId, asset) { return Math.floor(Math.random() * 1000); }
+prices = symbols.map(sym => getPrice(currentEpoch, sym));
+randoms = symbols.map(sym => getRandom(currentEpoch, sym)); 
+hashes = prices.map((p, i) => 
+    submitPriceHash(p, randoms[i], priceProviderAccount.address)
+);
+
+// To get an error, change currentEpoch to an earlier time
+submission = await priceSubmitter.submitPriceHashes(currentEpoch, ftsoIndices, hashes, {from: priceProviderAccount.address} );
+// expectEvent(submission, "PriceHashesSubmitted", { ftsos: ftsoAddresses, 
+//     epochId: currentEpoch.toString(), hashes: hashes});
+
+// // Throw an error
+// // Change epoch number in submitPriceHashes as appropriate
+// let err;
+// async function testSubmit() {
+//     try {
+//       submission = await priceSubmitter.submitPriceHashes(0,ftsoIndices, hashes, {from: priceProviderAccount.address, gasLimit: 1000000 });
+//     } catch (error) {
+//       err = error;
+//       error.message;
+//     }
+//   }
+// await testSubmit()

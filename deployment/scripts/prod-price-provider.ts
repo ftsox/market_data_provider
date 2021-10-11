@@ -42,12 +42,10 @@ export function submitPriceHash(price: number, random: number, address: string,)
     return ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode([ "uint256", "uint256", "address" ], [price.toString(), random.toString(), address]))
 }
 
-// function submitPriceHash(price, random, address) { return ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode([ "uint256", "uint256", "address" ], [ price.toString(), random.toString(), address])) }
-
-// TODO: Implement this to read prices from interesting places
-function getPrice(epochId: number, asset: string): number{
-    return Math.floor(Math.random() * 200 + 10000);
-}
+// // TODO: Implement this to read prices from interesting places
+// function getPrice(epochId: number, asset: string): number{
+//     return Math.floor(Math.random() * 200 + 10000);
+// }
 
 // TODO: abstract out API call to a different function to easily switch between APIs
 // Decimals: number of decimal places in Asset USD price
@@ -110,9 +108,12 @@ else {
     Main price provider server
 */
 
+// TODO(MCZ): add output logging for better error diagnosis
 async function main() {
     // Times
-    console.log(`Times:`);
+    console.log(`\n\n\nStarting FTSO provider on ${isTestnet ? 'testnet' : 'mainnet'}`);
+    console.log(`\tStart time: ${Date()}`); 
+    console.log(`Time check:`);
     console.log(`\tChain time:  ${await getTime()}`);
     console.log(`\tSystem time: ${(new Date()).getTime() / 1000}`);
 
@@ -141,6 +142,7 @@ async function main() {
     // Get indices for specific symbols
     // const symbols = ["SGB", "XRP", "LTC", "XLM", "XDG", "ADA", "ALGO", "BCH", "DGB", "BTC"];
     // const symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
+    // Note: this can be replaced by a single call based on live contract
     const ftsoSupportedIndices = (await ftsoRegistry.getSupportedIndices()).map(idx => (idx.toNumber()));
     const symbols = await Promise.all(
         ftsoSupportedIndices.map(async idx => await ftsoRegistry.getFtsoSymbol(idx))
@@ -216,6 +218,7 @@ async function main() {
     }
 
     // Get submission config
+    // Assumes uniform across all FTSOs (was in original Flare code)
     const {
         0: firstEpochStartTimeBN,
         1: submitPeriodBN,
@@ -243,6 +246,7 @@ async function main() {
     console.log(`Waiting for ${diff} seconds until first start`); 
     await sleep(diff * 1000);
     let currentEpoch = startingEpoch;
+    let nextEpoch = currentEpoch + 1;
 
     // We submitPriceHashes with the current EpochID, 
     // then once current Epoch is passed, within 90 seconds, we call revealPrices with EpochID 
@@ -253,11 +257,12 @@ async function main() {
     //      _epochSubmitStartTime
     //      _epochSubmitEndTime
     //      _epochRevealEndTime;
+    var errorCount = 0;
+    // sleep until submitBuffer seconds before the end of the epoch to maximize chance of being in interquartile range
+    // Need a bit of buffer to let the other function calls return
+    // Should be based on when others submit their prices to make sure we're as close as possible to them
+    var submitBuffer = 20;    // TODO: replace with a dynamic option that averages over last N surplus times + M std buffer
     while (true) {
-        // sleep until submitBuffer seconds before the end of the epoch to maximize chance of being in interquartile range
-        // Need a bit of buffer to let the other function calls return
-        // Should be based on when others submit their prices to make sure we're as close as possible to them
-        const submitBuffer = 22;    // TODO: replace with a dynamic option that averages over last N surplus times + 4std buffer
 
         // Get time and current epoch params
         now = await getTime();
@@ -268,8 +273,8 @@ async function main() {
             currentEpoch = currentEpochCheck;
         }
         const start = currentEpoch * submitPeriod + firstEpochStartTime;
-        next = (currentEpoch + 1) * submitPeriod + firstEpochStartTime;
-        const submitWaitTime = Math.floor(next - now) - submitBuffer;
+        next = nextEpoch * submitPeriod + firstEpochStartTime;
+        const submitWaitTime = Math.max(Math.floor(next - now) - submitBuffer, 0);  // don't wait negative time
 
         console.log("\n\nEpoch ", currentEpoch); 
         console.log(`\tEpoch start time: ${new Date(start * 1000)}`);
@@ -278,7 +283,6 @@ async function main() {
         console.log(`\tWaiting for ${submitWaitTime} seconds before getting price`); 
         await sleep(submitWaitTime * 1000);
 
-        // TODO(MCZ): update to check on block
         if (isTestnet) {
             // Force hardhat to mine a new block which will have an updated timestamp. if we don't hardhat timestamp will not update.
             time.advanceBlock();    
@@ -297,38 +301,77 @@ async function main() {
             submitPriceHash(p, randoms[i], priceProviderAccount.address)
         );
         console.log(`\tFinished getting hashes: ${Date()}`); 
-        // const hashes = prices.map((p, i) => submitPriceHash(p, randoms[i], priceProviderAccount.address) );
         console.log("Prices:  ", prices);
         console.log("Randoms: ", randoms);
-        // Submit price, on everything
-        const submission = await priceSubmitter.submitPriceHashes(currentEpoch, 
-            ftsoIndices, hashes, {from: priceProviderAccount.address}
-        );
-        expectEvent(submission, "PriceHashesSubmitted", { ftsos: ftsoAddresses, 
-            epochId: currentEpoch.toString(), hashes: hashes});
-        console.log(`\tFinished submission:     ${Date()}`); 
+        // occasionally, the submission will happen too late.
+        // Catch those errors and continue
+        var submittedHash: boolean;
+        console.log(`\tSubmitting price hashes: ${Date()}`)
+        try {
+            // Submit price, on everything
+            const submission = await priceSubmitter.submitPriceHashes(currentEpoch, 
+                ftsoIndices, hashes, {from: priceProviderAccount.address}
+            );
+            expectEvent(submission, "PriceHashesSubmitted", { ftsos: ftsoAddresses, 
+                epochId: currentEpoch.toString(), hashes: hashes});
+            console.log(`\tFinished submission:     ${Date()}`); 
+            submittedHash = true;
+        } catch (error) {
+            // TODO(MCZ): add notifications
+            submittedHash = false;
+            console.log('Error submitting price hashes');
+            console.log(error);
+            errorCount += 1;
+            console.log(`Total errors now ${errorCount}`);
+            // if this is due to late submission, then we need to increase our buffer
+            // TODO(MCZ): change to analyzing the timestamp of the failed transaction - not easy to do with Hardhat errors
+            // Sometimes this will be submitted in time but not confirmed in time, in which case we get a tx id
+            // Otherwise, just an error saying:
+            //      Uncaught Error: Returned error: execution reverted: Wrong epoch id
+            // Ref: https://gitlab.com/flarenetwork/flare-smart-contracts/-/blob/master/contracts/ftso/implementation/Ftso.sol#L634
+            // const errorTime = (new Date()).getTime() / 1000;
+            const errorTime = await getTime();  // need to use blockchain time, or else the below condition may not fire
+            if (errorTime >= next) {
+                submitBuffer = Math.min(submitBuffer + 1, submitPeriod);    // cap buffer at submitPeriod
+                console.log(`Increasing submit buffer to ${submitBuffer} seconds`);
+            }
+        }
 
-        currentEpoch = currentEpoch + 1;
-
+        // advance to start of reveal period
         now = await getTime();
-        next = currentEpoch * submitPeriod + firstEpochStartTime;
-        diff = Math.floor(next - now);
+        next = nextEpoch * submitPeriod + firstEpochStartTime;
+        diff = Math.max(Math.floor(next - now), 0);     // don't sleep for negative time
         console.log(`Waiting for ${diff} seconds until reveal`); 
         await sleep(diff * 1000);
         
-        console.log(`\tWoke at:                 ${Date()}`); 
         // Reveal prices
+        console.log(`\tWoke at:                 ${Date()}`); 
         if (isTestnet) {
             time.advanceBlock();
         }
-        const reveal = await priceSubmitter.revealPrices(currentEpoch - 1, ftsoIndices, prices, randoms, {from: priceProviderAccount.address});
-        await expectEvent(reveal, "PricesRevealed", { ftsos: ftsoAddresses,
-            epochId: (currentEpoch - 1).toString(), prices: prices.map(x => toBN(x)) });
+        // Only reveal if we successfully submitted
+        if (submittedHash) {
+            console.log(`\tSubmitting price reveal: ${Date()}`)
+            try {
+                const reveal = await priceSubmitter.revealPrices(currentEpoch, ftsoIndices, prices, randoms, {from: priceProviderAccount.address});
+                await expectEvent(reveal, "PricesRevealed", { ftsos: ftsoAddresses,
+                    epochId: (currentEpoch).toString(), prices: prices.map(x => toBN(x)) });
+                console.log(`\tFinished reveal:         ${Date()}`); 
+                console.log("Revealed prices for epoch ", currentEpoch);
+            } catch (error) {
+                console.log('Error submitting price reveals');
+                console.log(error);
+                errorCount += 1;
+                console.log(`Total errors now ${errorCount}`);    
+            }
+        }
+        
+        // start loop again, the next price submission epoch has already started since we're in reveal phase
+        // increment epoch
+        currentEpoch = nextEpoch;
+        nextEpoch = nextEpoch + 1
 
-        console.log(`\tFinished reveal:         ${Date()}`); 
-        console.log("Revealed prices for epoch ", currentEpoch - 1);
-        // start loop again, the price submission has already started
-
+        // get remaining balance
         sgbBalance = fromWei((await ethers.provider.getBalance(priceProviderAccount.address)).toString());
         console.log(`SGB remaining: ${sgbBalance}`);
     }
