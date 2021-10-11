@@ -124,7 +124,7 @@ async function main() {
     const priceProviderAccount = accounts[0];
 
     // Get balance of addresses
-    const sgbBalance = fromWei((await ethers.provider.getBalance(priceProviderAccount.address)).toString());
+    var sgbBalance = fromWei((await ethers.provider.getBalance(priceProviderAccount.address)).toString());
     console.log(`FTSO provider address: ${priceProviderAccount.address}`);
     console.log(`          SGB Balance: ${sgbBalance}`);
 
@@ -257,7 +257,7 @@ async function main() {
         // sleep until submitBuffer seconds before the end of the epoch to maximize chance of being in interquartile range
         // Need a bit of buffer to let the other function calls return
         // Should be based on when others submit their prices to make sure we're as close as possible to them
-        const submitBuffer = 20;    // TODO: replace with a dynamic option that averages over last N surplus times + 4std buffer
+        const submitBuffer = 22;    // TODO: replace with a dynamic option that averages over last N surplus times + 4std buffer
 
         // Get time and current epoch params
         now = await getTime();
@@ -328,6 +328,9 @@ async function main() {
         console.log(`\tFinished reveal:         ${Date()}`); 
         console.log("Revealed prices for epoch ", currentEpoch - 1);
         // start loop again, the price submission has already started
+
+        sgbBalance = fromWei((await ethers.provider.getBalance(priceProviderAccount.address)).toString());
+        console.log(`SGB remaining: ${sgbBalance}`);
     }
 }
    
