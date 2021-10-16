@@ -2,7 +2,7 @@
 
 Songbird/Flare FTSO server.
 
-## Setup
+## Development
 <!-- First follow the `Getting Started` instructions in the [FTSO npm example package](https://www.npmjs.com/package/@flarenetwork/ftso_price_provider_kick_off_package) to get your local environment ready. -->
 Clone this repository.
 
@@ -31,7 +31,7 @@ In the second window, run
 ```
 yarn hardhat compile 
 yarn hardhat run ./deployment/scripts/deploy-mock-price-submitter.ts --network localhost
-env CHAIN_CONFIG=scdev yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network localhost
+env CHAIN_CONFIG=scdev yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network localhostv
 ```
 or to run on mainnet:
 ```
@@ -49,9 +49,20 @@ To run the main process in the background, use `screen` ([Explanation](https://a
 
 See `scratch/console_commands.js` for some examples
 
-## Usage
+## Production
 
-TODO
+Make sure docker-compose and docker are installed on the instance.
+
+Setup .env per instructions above and run:
+
+`docker-compose up`
+
+The monitoring process should check the status every minute, logs are written to `./logs/run.log`
+
+If you make changes to the codebase and would like to redeploy:
+
+`docker-compose build` and then `docker-compose up`
+
 
 ## Improvements
 
