@@ -112,6 +112,15 @@ const config: HardhatUserConfig = {
       accounts: [process.env.FTSO_PRIVATE_KEY ?? ''],
       gas: 'auto',
       gasPrice: 'auto',
+    },
+    // Network for data analysis, requires a longer timeout
+    songbirdData: {
+      url: process.env.RPC_NODE_URL,
+      chainId: 19,  // Songbird
+      accounts: [process.env.FTSO_PRIVATE_KEY ?? ''],
+      gas: 'auto',
+      gasPrice: 'auto',
+      timeout: 100000,
     }
   },
   solidity: {
