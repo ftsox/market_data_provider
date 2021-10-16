@@ -8,7 +8,8 @@ const { ethers } = require('hardhat');
 const hre = require("hardhat");
 const { toWei } = web3.utils;
 const { fromWei } = web3.utils;
-const { BN, bufferToHex, privateToAddress, toBuffer } = require("ethereumjs-util")
+const { BN, bufferToHex, privateToAddress, toBuffer } = require("ethereumjs-util");
+const math = require("mathjs");
 // @ts-ignore
 import { time, expectEvent } from '@openzeppelin/test-helpers';
 import { toBN } from '../../test/utils/test-helpers';
@@ -72,7 +73,8 @@ async function getPrices(epochId: number, assets: string[], decimals: number[]):
 
 // TODO: Maybe change random generation
 function getRandom(epochId: number, asset: string): number{
-    return Math.floor(Math.random() * 1000);
+    // return Math.floor(Math.random() * 1000);
+    return Math.floor(Math.random() * 1e10);
 }
 
 
@@ -213,6 +215,11 @@ async function main() {
         );
         console.log(`FTSO Whitelist counts (after whitelisting):`);
         console.log(ftsoWhitelistsCountsPost);
+        // TODO(MCZ): set desired fee percentage
+        // https://songbird-explorer.flare.network/address/0xc5738334b972745067fFa666040fdeADc66Cb925/write-contract
+        // Use setDataProviderFeePercentage(bps)
+        // Then delegate to your FTSO provider address via 
+        // https://songbird-explorer.flare.network/address/0x02f0826ef6aD107Cfc861152B32B52fD11BaB9ED/write-contract
     } else {
         console.log(`Already whitelisted!`)
     }
@@ -261,7 +268,14 @@ async function main() {
     // sleep until submitBuffer seconds before the end of the epoch to maximize chance of being in interquartile range
     // Need a bit of buffer to let the other function calls return
     // Should be based on when others submit their prices to make sure we're as close as possible to them
-    var submitBuffer = 20;    // TODO: replace with a dynamic option that averages over last N surplus times + M std buffer
+    // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
+    var submitBuffer = 20;              // Initial buffer for how many seconds before end of epoch we should start submission
+    var submitTimes: Number[] = [];     // Record recent times to measure how much buffer we need
+    var submitBufferStd = 3;            // How many stds (normal)
+    // var submitBufferDecay = 0.999;      // Decay factor on each loop
+    // var submitBufferIncrease = 1.1;     // Increase factor (multiple of std) for when we miss a submission window
+    var submitBufferBase = 3;           // Base buffer rate.
+    var submitBufferBurnIn = 2;        // Number of periods before adjusting submitBuffer
     while (true) {
 
         // Get time and current epoch params
@@ -284,6 +298,7 @@ async function main() {
         console.log(`\tWaiting for ${submitWaitTime} seconds before getting price`); 
         await sleep(submitWaitTime * 1000);
 
+        var startSubmitTime: Date = new Date();
         if (isTestnet) {
             // Force hardhat to mine a new block which will have an updated timestamp. if we don't hardhat timestamp will not update.
             time.advanceBlock();    
@@ -329,26 +344,48 @@ async function main() {
             // Otherwise, just an error saying:
             //      Uncaught Error: Returned error: execution reverted: Wrong epoch id
             // Ref: https://gitlab.com/flarenetwork/flare-smart-contracts/-/blob/master/contracts/ftso/implementation/Ftso.sol#L634
-            // const errorTime = (new Date()).getTime() / 1000;
-            const errorTime = await getTime();  // need to use blockchain time, or else the below condition may not fire
-            if (errorTime >= next) {
-                submitBuffer = Math.min(submitBuffer + 1, submitPeriod);    // cap buffer at submitPeriod
-                console.log(`Increasing submit buffer to ${submitBuffer} seconds`);
-            }
+
+            // const errorTime = await getTime();  // need to use blockchain time, or else the below condition may not fire
+            // if (errorTime >= next) {
+            //     submitBuffer = Math.min(submitBuffer + 1, submitPeriod);    // cap buffer at submitPeriod
+            //     console.log(`Increasing submit buffer to ${submitBuffer} seconds`);
+            // }
+
             // TODO(MCZ): also account for other network/provider issues, e.g. RPC node goes down
             // Can use Towo as backup node
             // https://hardhat.org/plugins/hardhat-change-network.html
         }
+        var endSubmitTime: Date = new Date();
+        var submitTime = (endSubmitTime.getTime() - startSubmitTime.getTime()) / 1000;   // in seconds
+        var nSubmitTimes = submitTimes.push(submitTime);
+        // only store latest 1000 times
+        if (nSubmitTimes > 1000) {
+            submitTimes.shift();
+        }
+        // modify submit buffer based on recent observed times
+        var submitMean = math.mean(submitTimes);
+        var submitStd = math.std(submitTimes);
+        console.log(`\nSubmit Buffer update:`);
+        console.log(`   Prev: ${submitBuffer}`);
+        // require a minimum sample size for updates
+        if (nSubmitTimes > submitBufferBurnIn) {
+            // new submitBuffer in seconds
+            submitBuffer = submitBufferBase + submitMean + submitBufferStd*submitStd;
+        }
+        console.log(`   New:  ${submitBuffer}`);
+        console.log(`   Mean: ${submitMean}`);
+        console.log(`   Std:  ${submitStd}`);
+        console.log(`   Last: ${submitTime}`);
 
         // advance to start of reveal period
         now = await getTime();
         next = nextEpoch * submitPeriod + firstEpochStartTime;
         diff = Math.max(Math.floor(next - now), 0);     // don't sleep for negative time
-        console.log(`Waiting for ${diff} seconds until reveal`); 
+        console.log(`\nWaiting for ${diff} seconds until reveal`); 
         await sleep(diff * 1000);
         
         // Reveal prices
-        console.log(`\tWoke at:                 ${Date()}`); 
+        console.log(`\n\tWoke at:                 ${Date()}`); 
         if (isTestnet) {
             time.advanceBlock();
         }

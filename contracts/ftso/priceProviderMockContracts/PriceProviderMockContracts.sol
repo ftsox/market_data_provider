@@ -574,7 +574,8 @@ contract MockPriceSubmitter is IPriceSubmitter {
         string[11] memory symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
         for (uint256 i = 0; i < symbols.length; ++i) {
             string memory symbol = symbols[i];
-            MockNpmFtso ftso = new MockNpmFtso(symbol, this, block.timestamp - 120, 120, 30);
+            // MockNpmFtso ftso = new MockNpmFtso(symbol, this, block.timestamp - 120, 120, 30);
+            MockNpmFtso ftso = new MockNpmFtso(symbol, this, block.timestamp - 30, 30, 10);
             ftsoRegistry.addFtso(ftso);
             uint256 ftsoIndex = ftsoRegistry.getFtsoIndex(symbol);
             voterWhitelister.addFtso(ftsoIndex);

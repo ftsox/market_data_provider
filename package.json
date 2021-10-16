@@ -45,6 +45,7 @@
     "eslint": "7.30.0",
     "got": "11.8.2",
     "hardhat": "2.3.0",
+    "mathjs": "^9.5.1",
     "solhint": "3.3.2",
     "solidity-coverage": "0.7.16"
   },
