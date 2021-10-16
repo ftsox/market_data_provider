@@ -46,6 +46,7 @@
     "got": "11.8.2",
     "hardhat": "2.3.0",
     "mathjs": "^9.5.1",
+    "nodemailer": "^6.7.0",
     "solhint": "3.3.2",
     "solidity-coverage": "0.7.16"
   },

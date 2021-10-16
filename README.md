@@ -20,6 +20,7 @@ Run `yarn`.
 Then setup an `.env` file following `.env example` with the following:
 - Songbird/Flare node (see https://gitlab.com/flarenetwork/node-config)
 - CryptoCompare API key
+- Gmail access credentials ([instructions](https://support.google.com/accounts/answer/185833?p=InvalidSecondFactor&visit_id=637687407469912796-3308787284&rd=1))
 and call `source .env` in your terminal.
 
 To run on local hardhat testnet, open up two terminal windows. In the first, run

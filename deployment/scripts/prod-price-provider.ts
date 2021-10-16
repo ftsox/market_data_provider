@@ -10,6 +10,7 @@ const { toWei } = web3.utils;
 const { fromWei } = web3.utils;
 const { BN, bufferToHex, privateToAddress, toBuffer } = require("ethereumjs-util");
 const math = require("mathjs");
+const nodemailer = require("nodemailer");
 // @ts-ignore
 import { time, expectEvent } from '@openzeppelin/test-helpers';
 import { toBN } from '../../test/utils/test-helpers';
@@ -104,6 +105,19 @@ else {
     // priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122"; 
     isTestnet = true;
 }
+
+
+// Email for notifications
+// create reusable transporter object using the default SMTP transport
+let transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true, // true for 465, false for other ports
+    auth: {
+        user: process.env.GMAIL_USER, 
+        pass: process.env.GMAIL_PASSWORD, 
+    },
+});
 
 
 /*
@@ -354,6 +368,16 @@ async function main() {
             // TODO(MCZ): also account for other network/provider issues, e.g. RPC node goes down
             // Can use Towo as backup node
             // https://hardhat.org/plugins/hardhat-change-network.html
+
+            // Send error message
+            // send mail with defined transport object
+            let info = await transporter.sendMail({
+                from: '"FTSO Monitor" <mczochowski@gmail.com>',       // sender address
+                to: "mczochowski@gmail.com",                // list of receivers
+                subject: `FTSO error for ${priceProviderAccount.address}`,                           // Subject line
+                text: `Price hash submission error for ${priceProviderAccount.address}`,        // plain text body
+                html: `Price hash submission error for <b>${priceProviderAccount.address}</b>`, // html body
+            });
         }
         var endSubmitTime: Date = new Date();
         var submitTime = (endSubmitTime.getTime() - startSubmitTime.getTime()) / 1000;   // in seconds
@@ -402,6 +426,15 @@ async function main() {
                 console.log('Error submitting price reveals');
                 console.log(error);
                 errorCount += 1;
+
+                // Send error message
+                let info = await transporter.sendMail({
+                    from: '"FTSO Monitor" <mczochowski@gmail.com>',       // sender address
+                    to: "mczochowski@gmail.com",                // list of receivers
+                    subject: `FTSO error for ${priceProviderAccount.address}`,                           // Subject line
+                    text: `Price reveal submission error for ${priceProviderAccount.address}`,        // plain text body
+                    html: `Price reveal submission error for <b>${priceProviderAccount.address}</b>`, // html body
+                });
             }
         }
         
