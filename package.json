@@ -39,6 +39,7 @@
     "@typescript-eslint/eslint-plugin": "4.28.3",
     "@typescript-eslint/parser": "4.28.3",
     "cli-progress": "3.9.0",
+    "coingecko-api": "^1.0.10",
     "csv": "5.5.0",
     "danfojs-node": "^0.3.3",
     "dotenv": "8.2.0",
