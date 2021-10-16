@@ -372,8 +372,8 @@ async function main() {
             // Send error message
             // send mail with defined transport object
             let info = await transporter.sendMail({
-                from: '"FTSO Monitor" <mczochowski@gmail.com>',       // sender address
-                to: "mczochowski@gmail.com",                // list of receivers
+                from: '"FTSO Monitor" <cv40067@gmail.com>',       // sender address
+                to: "cv40067@gmail.com",                // list of receivers
                 subject: `FTSO error for ${priceProviderAccount.address}`,                           // Subject line
                 text: `Price hash submission error for ${priceProviderAccount.address}`,        // plain text body
                 html: `Price hash submission error for <b>${priceProviderAccount.address}</b>`, // html body
@@ -429,8 +429,8 @@ async function main() {
 
                 // Send error message
                 let info = await transporter.sendMail({
-                    from: '"FTSO Monitor" <mczochowski@gmail.com>',       // sender address
-                    to: "mczochowski@gmail.com",                // list of receivers
+                    from: '"FTSO Monitor" <cv40067@gmail.com">',       // sender address
+                    to: "cv40067@gmail.com",                // list of receivers
                     subject: `FTSO error for ${priceProviderAccount.address}`,                           // Subject line
                     text: `Price reveal submission error for ${priceProviderAccount.address}`,        // plain text body
                     html: `Price reveal submission error for <b>${priceProviderAccount.address}</b>`, // html body

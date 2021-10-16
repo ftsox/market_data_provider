@@ -1,0 +1,8 @@
+version: "3"
+
+services:
+  local_ftso:
+    build: .
+    volumes:
+     - ./logs:/app/logs
+    command: /bin/bash -c /app/ftso_start.sh
