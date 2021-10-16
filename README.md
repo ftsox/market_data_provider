@@ -51,6 +51,11 @@ See `scratch/console_commands.js` for some examples
 
 ## Production
 
+### Docker
+
+Build the image in project root directory: `docker build .` then push to docker hub: `docker push  bbftso/ftsojs`. Note that the images need to be tagged before pushing: `docker tag image_hash bbftso/ftsojs`.
+
+###Deployment
 Make sure docker-compose and docker are installed on the instance.
 
 Setup the enviornment variable in the `docker-compose.yml` file similarly to the `.env` file without quotes then: 
