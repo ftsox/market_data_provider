@@ -53,15 +53,11 @@ See `scratch/console_commands.js` for some examples
 
 Make sure docker-compose and docker are installed on the instance.
 
-Setup .env per instructions above and run:
+Setup the enviornment variable in the `docker-compose.yml` file similarly to the `.env` file without quotes then: 
 
 `docker-compose up`
 
 The monitoring process should check the status every minute, logs are written to `./logs/run.log`
-
-If you make changes to the codebase and would like to redeploy:
-
-`docker-compose build` and then `docker-compose up`
 
 
 ## Improvements

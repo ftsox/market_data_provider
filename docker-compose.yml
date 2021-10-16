@@ -1,8 +1,14 @@
 version: "3"
 
 services:
-  local_ftso:
-    build: .
+  ftso:
+    image: bbftso/ftsojs:latest
     volumes:
      - ./logs:/app/logs
+    environment:
+     - CC_API_KEY=
+     - RPC_NODE_URL=
+     - FTSO_PRIVATE_KEY=
+     - GMAIL_USER=
+     - GMAIL_PASSWORD=
     command: /bin/bash -c /app/ftso_start.sh
