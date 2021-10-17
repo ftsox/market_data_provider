@@ -127,20 +127,21 @@ let transporter = nodemailer.createTransport({
 });
 
 
-function err_cb_submit(err:any, ret:any) {
+
+
+function err_cb_submit_mute(err:any, ret:any) {
     if (err) {
         console.log("An error occurred", err)
         return
     }
-    console.log("submitPriceHashes completed the txHash is: ", ret)
 }
 
-function err_cb_reveal(err:any, ret:any) {
+
+function err_cb_reveal_mute(err:any, ret:any) {
     if (err) {
         console.log("An error occurred", err)
         return
     }
-    console.log("revealPrices completed the txHash is: ", ret)
 }
 /*
     Main price provider server
@@ -315,7 +316,7 @@ async function main() {
     // Need a bit of buffer to let the other function calls return
     // Should be based on when others submit their prices to make sure we're as close as possible to them
     // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
-    var submitBuffer = 20;              // Initial buffer for how many seconds before end of epoch we should start submission
+    var submitBuffer = 15;              // Initial buffer for how many seconds before end of epoch we should start submission
     var submitTimes: Number[] = [];     // Record recent times to measure how much buffer we need
     var submitBufferStd = 3;            // How many stds (normal)
     // var submitBufferDecay = 0.999;      // Decay factor on each loop
@@ -368,18 +369,17 @@ async function main() {
         // occasionally, the submission will happen too late.
         // Catch those errors and continue
         var submittedHash: boolean;
-        console.log(`\tSubmitting price hashes: ${Date()}`)
+        
         try {
 
             const exchangeEncodeABI = priceSUbmitterContract.methods.submitPriceHashes(currentEpoch,ftsoIndices, hashes).encodeABI();
-            var gasLimit = await priceSUbmitterContract.methods.submitPriceHashes(currentEpoch,ftsoIndices, hashes).estimateGas({from: priceProviderAccount.address});
             var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
             var gasPrice = await web3.eth.getGasPrice();
             const transactionObject = {
                 chainId: 19,
                 nonce: web3.utils.toHex(transactionNonce),
-                gasLimit: web3.utils.toHex(gasLimit),
-                gasPrice: web3.utils.toHex(gasPrice),
+                gasLimit: web3.utils.toHex(469532),
+                gasPrice: web3.utils.toHex(gasPrice*1.2),
                 value: 0,
                 to: priceSubmitterAddr,
                 from: priceProviderAccount.address,
@@ -390,14 +390,18 @@ async function main() {
             let transaction = new EthTx(transactionObject);
             transaction.sign(privateKey); // sign a transaction
             const serializedEthTx = transaction.serialize().toString("hex"); // serialize the transaction
-            web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`); 
-            const submission1 = await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_submit); // send signed transaction
-            console.log(`\tFinished submission:     ${Date()}`); 
+            console.log(`\tSubmitting price hashes: ${Date()}`)
+            web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_submit_mute); 
+            console.log(`\tFirst Provider Finished submission:     ${Date()}`); 
+            await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('receipt', 'receipt',(receipt) => {
+                console.log('submitPriceHashes txHash: ', receipt.logs.transactionHash)
+            }); // send signed transaction
+            console.log(`\tSecond Provider Finished submission:     ${Date()}`); 
                 submittedHash = true;
         } catch (error) {
             // TODO(MCZ): add notifications
             submittedHash = false;
-            console.log('Error submitting price hashes');
+            console.log(`\tError submitting price hashes::     ${Date()}`); 
             console.log(error);
             errorCount += 1;
             // if this is due to late submission, then we need to increase our buffer
@@ -443,6 +447,8 @@ async function main() {
         if (nSubmitTimes > submitBufferBurnIn) {
             // new submitBuffer in seconds
             submitBuffer = submitBufferBase + submitMean + submitBufferStd*submitStd;
+            if(submitBuffer < 15)
+                submitBuffer = 15;
         }
         console.log(`   New:  ${submitBuffer}`);
         console.log(`   Mean: ${submitMean}`);
@@ -484,8 +490,10 @@ async function main() {
                 let transaction = new EthTx(transactionObject);
                 transaction.sign(privateKey); // sign a transaction
                 const serializedEthTx = transaction.serialize().toString("hex"); // serialize the transaction
-                web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`); 
-                const submission1 = await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_reveal); // send signed transaction
+                web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_reveal_mute); 
+                await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('receipt', 'receipt',(receipt) => {
+                    console.log('revealPrices txHash: ', receipt.logs.transactionHash)
+                }); // send signed transaction
 
         
                 console.log(`\tFinished reveal:         ${Date()}`); 
