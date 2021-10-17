@@ -393,7 +393,7 @@ async function main() {
             console.log(`\tSubmitting price hashes: ${Date()}`)
             web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_submit_mute); 
             console.log(`\tFirst Provider Finished submission:     ${Date()}`); 
-            await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('receipt', 'receipt',(receipt) => {
+            await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('receipt', (receipt) => {
                 console.log('submitPriceHashes txHash: ', receipt.logs.transactionHash)
             }); // send signed transaction
             console.log(`\tSecond Provider Finished submission:     ${Date()}`); 
@@ -491,7 +491,7 @@ async function main() {
                 transaction.sign(privateKey); // sign a transaction
                 const serializedEthTx = transaction.serialize().toString("hex"); // serialize the transaction
                 web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_reveal_mute); 
-                await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('receipt', 'receipt',(receipt) => {
+                await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('receipt', (receipt) => {
                     console.log('revealPrices txHash: ', receipt.logs.transactionHash)
                 }); // send signed transaction
 
