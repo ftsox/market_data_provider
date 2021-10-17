@@ -15,7 +15,7 @@ nvm install node
 npm install --global yarn
 ```
 
-Run `yarn`.
+Switch to the repo folder (`cd ftso`) and run `yarn`.
 
 Then setup an `.env` file following `.env example` with the following:
 - Songbird/Flare node (see https://gitlab.com/flarenetwork/node-config)
