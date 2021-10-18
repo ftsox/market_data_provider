@@ -393,9 +393,13 @@ async function main() {
             console.log(`\tSubmitting price hashes: ${Date()}`)
             web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_submit_mute); 
             console.log(`\tFirst Provider Finished submission:     ${Date()}`); 
-            await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('receipt', (receipt) => {
-                console.log('submitPriceHashes txHash: ', receipt.logs.transactionHash)
-            }); // send signed transaction
+            await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('transactionHash',(hash) => {
+                console.log('\tsubmitPriceHashes txHash:', hash)
+            })
+            .on('receipt',(receipt) => {
+            })
+            .on('error', console.error);                
+
             console.log(`\tSecond Provider Finished submission:     ${Date()}`); 
                 submittedHash = true;
         } catch (error) {
@@ -491,11 +495,13 @@ async function main() {
                 transaction.sign(privateKey); // sign a transaction
                 const serializedEthTx = transaction.serialize().toString("hex"); // serialize the transaction
                 web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_reveal_mute); 
-                await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('receipt', (receipt) => {
-                    console.log('revealPrices txHash: ', receipt.logs.transactionHash)
-                }); // send signed transaction
+                await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('transactionHash',(hash) => {
+                    console.log('\trevealPrices txHash:', hash)
+                })
+                .on('receipt',(receipt) => {
+                })
+                .on('error', console.error);                
 
-        
                 console.log(`\tFinished reveal:         ${Date()}`); 
                 console.log("Revealed prices for epoch ", currentEpoch);
             } catch (error) {
