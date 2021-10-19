@@ -58,9 +58,22 @@ Build the image in project root directory: `docker build .` then push to docker 
 ###Deployment
 Make sure docker-compose and docker are installed on the instance.
 
-Setup the enviornment variable in the `docker-compose.yml` file similarly to the `.env` file without quotes then: 
+On a fresh Ubuntu 20.04 instance:
+```
+sudo apt-get update
+sudo apt install docker
+sudo apt install docker-compose
+```
 
-`docker-compose up`
+Clone the git repo
+```
+git clone https://github.com/mczochowski/ftso.git
+cd ftso
+```
+
+Setup the enviornment variable in the `docker-compose.yml` file similarly to the `.env` file *without quotes*, then run: 
+
+```sudo docker-compose up```
 
 The monitoring process should check the status every minute, logs are written to `./logs/run.log`
 
