@@ -118,6 +118,8 @@ const config: HardhatUserConfig = {
       url: process.env.RPC_NODE_URL,
       chainId: 19,  // Songbird
       accounts: [process.env.FTSO_PRIVATE_KEY ?? ''],
+      // gas: 4e6,
+      // gasPrice: 450e9,
       gas: 'auto',
       gasPrice: 'auto',
       timeout: 100000,
