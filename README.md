@@ -20,6 +20,7 @@ Switch to the repo folder (`cd ftso`) and run `yarn`.
 Then setup an `.env` file following `.env example` with the following:
 - Songbird/Flare node (see https://gitlab.com/flarenetwork/node-config)
 - CryptoCompare API key
+- [CoinAPI Key](https://www.coinapi.io/Pricing)
 - Gmail access credentials ([instructions](https://support.google.com/accounts/answer/185833?p=InvalidSecondFactor&visit_id=637687407469912796-3308787284&rd=1))
 and call `source .env` in your terminal.
 
@@ -73,7 +74,14 @@ cd ftso
 
 Setup the enviornment variable in the `docker-compose.yml` file similarly to the `.env` file *without quotes*, then run: 
 
-```sudo docker-compose up```
+```
+sudo docker-compose up -d
+```
+
+To see the `docker-compose` logs, run:
+```
+sudo docker-compose logs
+```
 
 The monitoring process should check the status every minute, logs are written to `./logs/run.log`
 

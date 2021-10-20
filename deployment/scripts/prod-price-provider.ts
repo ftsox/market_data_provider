@@ -51,37 +51,65 @@ export function submitPriceHash(price: number, random: number, address: string,)
     return ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode([ "uint256", "uint256", "address" ], [price.toString(), random.toString(), address]))
 }
 
-// // TODO: Implement this to read prices from interesting places
-// function getPrice(epochId: number, asset: string): number{
-//     return Math.floor(Math.random() * 200 + 10000);
-// }
-
-// TODO: abstract out API call to a different function to easily switch between APIs
 // Decimals: number of decimal places in Asset USD price
 // note that the actual USD price is the integer value divided by 10^Decimals
+var baseCurrency = 'USD';
 async function getPrices(epochId: number, assets: string[], decimals: number[]): Promise<number[]>{
-    // return Math.floor(Math.random() * 200 + 10000);
-
     // Get prices
-    var baseCurrency = 'USD';
-    var ccApiKey = process.env.CC_API_KEY;
-    var ccApiUrl = `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${assets.join()}&tsyms=${baseCurrency}&api_key=${ccApiKey}`;
-    // console.log(ccApiUrl);
-
     try {
-        var pricesRaw = (await axios.get(ccApiUrl)).data;
-        var prices = assets.map(sym => pricesRaw[sym][baseCurrency])
+        // var prices = await getPricesCryptoCompare(assets);
+        var prices = await getPricesCoinApi(assets);
         var pricesAdj = prices.map((p,i) => Math.round(p * 10**decimals[i]))
         return pricesAdj;
     } catch(error){
-        console.log(`Price API error:\n  ${error}`);
-        return assets.map((sym, i) => 0);   // Return 0's, TOOD: update
+        console.log(`Get prices error:\n  ${error}`);
+        return assets.map((sym, i) => 0);   // Return 0's, TOOD: update - maybe return last prices?
     }
 }
 
-// TODO: Maybe change random generation
+// CryptoCompare price API
+async function getPricesCryptoCompare(assets: string[]): Promise<number[]>{
+    // Get prices
+    var ccApiKey = process.env.CC_API_KEY;
+    var ccApiUrl = `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${assets.join()}&tsyms=${baseCurrency}&api_key=${ccApiKey}`;
+    try {
+        var pricesRaw = (await axios.get(ccApiUrl)).data;
+        var prices = assets.map(sym => pricesRaw[sym][baseCurrency])
+        return prices;
+    } catch(error){
+        console.log(`CryptoCompare API error:\n  ${error}`);
+        return assets.map((sym, i) => 0);
+    }
+}
+
+// CoinAPI price API
+async function getPricesCoinApi(assets: string[]): Promise<number[]>{
+    // Get prices
+    const coinApiKey = process.env.COINAPI_KEY;
+    const coinApiUrl = `https://rest.coinapi.io/v1/exchangerate/${baseCurrency}?filter_asset_id=${assets.join(";")};`    // need trailing semicolon, invert doesn't work
+    const requestOptions = {
+        method: 'GET',
+        url: coinApiUrl,
+        headers: {
+            'X-CoinAPI-Key': coinApiKey
+        }
+    };
+    try {
+        var response = await axios.request(requestOptions);
+        var bulkRates = response.data.rates     // returns in alphabetical order
+        var idxMap: Map<string, number> = new Map( bulkRates.map((rateObj, i) => [rateObj.asset_id_quote, i]));
+        // confirm lengths to ensure we got all symbols
+        assert(bulkRates.length == assets.length);
+        // need to invert since invert flag doesn't work in API if we are also filtering by asset
+        var prices = assets.map( (sym, i) => 1 / bulkRates[idxMap.get(sym) ?? -1].rate );        // janky hack to get typescript to not complain about return type
+        return prices;
+    } catch(error){
+        console.log(`CryptoCompare API error:\n  ${error}`);
+        return assets.map((sym, i) => 0);
+    }    
+}
+
 function getRandom(epochId: number, asset: string): number{
-    // return Math.floor(Math.random() * 1000);
     return Math.floor(Math.random() * 1e10);
 }
 
@@ -197,8 +225,8 @@ async function main() {
         ftsoSupportedIndices.map(async idx => await ftsoRegistry.getFtsoSymbol(idx))
     );
 
-    // Test: get prices for symbols
-    // const prices = await getPrices(1, symbols);
+    // // Test: get prices for symbols
+    // const prices = await getPrices(1, symbols, new Array(symbols.length).fill(5));
     // console.log("Symbols: ", symbols);
     // console.log("Prices: ", prices);
 

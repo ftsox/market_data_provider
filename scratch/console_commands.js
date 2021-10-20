@@ -208,23 +208,127 @@ cgSymbolMapping = {
     'ETH': 'ethereum',
     'FIL': 'filecoin',
 };
-idx = 0;
-cgId = cgSymbolMapping[symbols[idx]];
-data = await CoinGeckoClient.coins.fetch(cgId, {});
-data.data.market_data.current_price['usd']
+cgNames = Object.values(cgSymbolMapping)
+
+// // loop over each
+// idx = 0;
+// cgId = cgSymbolMapping[symbols[idx]];
+// data = await CoinGeckoClient.coins.fetch(cgId, {});
+// data.data.market_data.current_price['usd']
+
+data = await CoinGeckoClient.simple.price({ ids: cgNames, vs_currencies: ['usd'], });
 // Only gives 2 decimals for XRP
 
 
 
-// // Get prices
-baseCurrency = 'USD';
-ccApiKey = process.env.CC_API_KEY;
-ccApiUrl = `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${symbols.join()}&tsyms=${baseCurrency}&api_key=${ccApiKey}`;
+// CoinApi
+// https://rapidapi.com/coinapi/api/coinapi-rest
+// var axios = require("axios").default;
+// https://docs.coinapi.io/#md-docs
+// List of asset symbols: https://www.coinapi.io/integration
+// Detail on how market price is calculated: https://support.coinapi.io/hc/en-us/articles/360018953291-How-are-exchange-rates-calculated-
 
-// https://www.twilio.com/blog/2017/08/http-requests-in-node-js.html
-const axios = require('axios');
-pricesRaw = (response = await axios.get(ccApiUrl)).data
-prices = symbols.map(sym => pricesRaw[sym][baseCurrency])
+
+// async function getCoinApiPrice(sym) {
+//     toCurr = 'USD';
+//     // fromCurr = symbols[idx]
+//     fromCurr = sym;
+//     // var options = {
+//     //     method: 'GET',
+//     //     url: `https://coinapi.p.rapidapi.com/v1/exchangerate/${fromCurr}/${toCurr}`,
+//     //     headers: {
+//     //         'x-rapidapi-host': 'coinapi.p.rapidapi.com',
+//     //         'x-rapidapi-key': process.env.COINAPI_KEY
+//     //     }
+//     // };
+
+//     var options = {
+//         method: 'GET',
+//         url: `https://rest.coinapi.io/v1/exchangerate/${fromCurr}/${toCurr}`,
+//         headers: {
+//             'X-CoinAPI-Key': process.env.COINAPI_KEY
+//         }
+//     };    
+
+//     data = await axios.request(options)
+//     return data.data.rate
+// }
+
+
+// async function getCoinApiPriceAsync(sym) {
+//     toCurr = 'USD';
+//     fromCurr = sym;
+//     var options = {
+//         method: 'GET',
+//         url: `https://rest.coinapi.io/v1/exchangerate/${fromCurr}/${toCurr}`,
+//         headers: {
+//             'X-CoinAPI-Key': process.env.COINAPI_KEY
+//         }
+//     };    
+
+//     return axios.request(options)
+// }
+
+
+// startTime = new Date();
+// for (sym of symbols) { console.log(`${sym}: ${await getCoinApiPrice(sym)}`);}
+// endTime = new Date();
+// totalTime = (endTime-startTime)/1000;
+// console.log(`Total time to call each price API sequentially: ${totalTime} seconds`)
+
+
+// toCurr = 'USD';
+// // fromCurr = symbols[idx]
+// fromCurr = sym;
+// var options = {
+//     method: 'GET',
+//     url: `https://rest.coinapi.io/v1/exchangerate/${fromCurr}/${toCurr}`,
+//     headers: {
+//         'X-CoinAPI-Key': process.env.COINAPI_KEY
+//     }
+// };
+// data = await axios.request(options)
+// data.data.rate
+
+startTime = new Date();
+// too much data transferred
+toCurr = 'USD'
+options = {
+  method: 'GET',
+  url: `https://rest.coinapi.io/v1/exchangerate/${toCurr}?filter_asset_id=${symbols.join(";")};`,   // need trailing semicolon, invert doesn't work
+  headers: {
+    'X-CoinAPI-Key': process.env.COINAPI_KEY // use for testing
+  }
+};
+data = await axios.request(options);
+bulkRates = data.data.rates // returns in alphabetical order
+idxMap = new Map( bulkRates.map((rateObj, i) => [rateObj.asset_id_quote, i]) )
+// confirm length
+assert(bulkRates.length == symbols.length)
+// need to invert since invert flag doesn't work in API if we are also filtering by asset
+prices = symbols.map( (sym, i) => 1/bulkRates[idxMap.get(sym)].rate)
+endTime = new Date();
+totalTime = (endTime-startTime)/1000;
+console.log(`Total time to call all prices API: ${totalTime} seconds`)
+
+
+
+
+// Zabo
+// https://zabo.com/docs/#get-exchange-rates
+
+
+// // CryptoCompare
+// // // Get prices
+// baseCurrency = 'USD';
+// ccApiKey = process.env.CC_API_KEY;
+// ccApiUrl = `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${symbols.join()}&tsyms=${baseCurrency}&api_key=${ccApiKey}`;
+
+// // https://www.twilio.com/blog/2017/08/http-requests-in-node-js.html
+// const axios = require('axios');
+// pricesRaw = (response = await axios.get(ccApiUrl)).data
+// prices = symbols.map(sym => pricesRaw[sym][baseCurrency])
+
 
 
 
