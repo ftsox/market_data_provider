@@ -1,4 +1,5 @@
 CC_API_KEY='YOUR KEY HERE'
+COINAPI_KEY='YOUR KEY HERE'
 RPC_NODE_URL='http://IP_ADDRESS:9650/ext/bc/C/rpc' # Reference: https://gitlab.com/flarenetwork/node-config
 FTSO_PRIVATE_KEY='YOUR KEY HERE'
 GMAIL_USER=gmail_name_without_@gmail.com
