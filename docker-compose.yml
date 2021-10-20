@@ -7,8 +7,11 @@ services:
      - ./logs:/app/logs
     environment:
      - CC_API_KEY=
+     - COINAPI_KEY=
+     - CMC_PRO_API_KEY=
      - RPC_NODE_URL=
      - FTSO_PRIVATE_KEY=
      - GMAIL_USER=
      - GMAIL_PASSWORD=
+     - ERROR_MAIL_LIST=
     command: /bin/bash -c /app/ftso_start.sh

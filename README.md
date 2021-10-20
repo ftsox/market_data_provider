@@ -21,8 +21,11 @@ Then setup an `.env` file following `.env example` with the following:
 - Songbird/Flare node (see https://gitlab.com/flarenetwork/node-config)
 - CryptoCompare API key
 - [CoinAPI Key](https://www.coinapi.io/Pricing)
+- [CoinMarketCap Key](https://coinmarketcap.com/api/pricing/)
+- Your price provider private key
 - Gmail access credentials ([instructions](https://support.google.com/accounts/answer/185833?p=InvalidSecondFactor&visit_id=637687407469912796-3308787284&rd=1))
 and call `source .env` in your terminal.
+- Email list for error messages
 
 To run on local hardhat testnet, open up two terminal windows. In the first, run
 ```
@@ -54,7 +57,7 @@ See `scratch/console_commands.js` for some examples
 
 ### Docker
 
-Build the image in project root directory: `docker build .` then push to docker hub: `docker push  bbftso/ftsojs`. Note that the images need to be tagged before pushing: `docker tag image_hash bbftso/ftsojs`.
+Build the image in project root directory: `docker build .` then push to docker hub: `docker push bbftso/ftsojs`. Note that the images need to be tagged before pushing: `docker tag image_hash bbftso/ftsojs`.
 
 ###Deployment
 Make sure docker-compose and docker are installed on the instance.

@@ -222,8 +222,6 @@ data = await CoinGeckoClient.simple.price({ ids: cgNames, vs_currencies: ['usd']
 
 
 // CoinApi
-// https://rapidapi.com/coinapi/api/coinapi-rest
-// var axios = require("axios").default;
 // https://docs.coinapi.io/#md-docs
 // List of asset symbols: https://www.coinapi.io/integration
 // Detail on how market price is calculated: https://support.coinapi.io/hc/en-us/articles/360018953291-How-are-exchange-rates-calculated-
@@ -329,6 +327,30 @@ console.log(`Total time to call all prices API: ${totalTime} seconds`)
 // pricesRaw = (response = await axios.get(ccApiUrl)).data
 // prices = symbols.map(sym => pricesRaw[sym][baseCurrency])
 
+
+
+
+// CoinMarketCap
+// https://coinmarketcap.com/api/documentation/v1/#operation/getV1CryptocurrencyListingsLatest
+/* Example in Node.js ES6 using request-promise */
+
+options = {
+  method: 'GET',
+  url: 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest',
+  params: {
+    'symbol': `${symbols.join(",")}`,
+    'convert': `${baseCurrency}`
+  },
+  headers: {
+    'X-CMC_PRO_API_KEY': process.env.CMC_PRO_API_KEY
+  },
+};
+response = await axios.request(options);
+// idxMap = new Map( response.data.map((rateObj, i) => [rateObj.asset_id_quote, i]) )
+prices = []
+// for (sym of symbols) { prices.push(response.data.data[sym].quote[baseCurrency]['price']) }
+symbols.map((sym, i) => response.data.data[sym].quote[baseCurrency]['price'])
+// data.data.data['XRP'].quote['USD'].price
 
 
 

@@ -57,8 +57,11 @@ var baseCurrency = 'USD';
 async function getPrices(epochId: number, assets: string[], decimals: number[]): Promise<number[]>{
     // Get prices
     try {
+        //// Could get multiple prices simultaneously using await Promise.all(...)
+        //// Ref: https://dev.to/raviojha/javascript-making-multiple-api-calls-the-right-way-2b29
         // var prices = await getPricesCryptoCompare(assets);
         var prices = await getPricesCoinApi(assets);
+        // var prices = await getPricesCMC(assets);
         var pricesAdj = prices.map((p,i) => Math.round(p * 10**decimals[i]))
         return pricesAdj;
     } catch(error){
@@ -83,10 +86,13 @@ async function getPricesCryptoCompare(assets: string[]): Promise<number[]>{
 }
 
 // CoinAPI price API
+// https://docs.coinapi.io/#md-docs
+// List of asset symbols: https://www.coinapi.io/integration
+// Detail on how market price is calculated: https://support.coinapi.io/hc/en-us/articles/360018953291-How-are-exchange-rates-calculated-
 async function getPricesCoinApi(assets: string[]): Promise<number[]>{
     // Get prices
     const coinApiKey = process.env.COINAPI_KEY;
-    const coinApiUrl = `https://rest.coinapi.io/v1/exchangerate/${baseCurrency}?filter_asset_id=${assets.join(";")};`    // need trailing semicolon, invert doesn't work
+    const coinApiUrl = `https://rest.coinapi.io/v1/exchangerate/${baseCurrency}?filter_asset_id=${assets.join(";")};`;    // need trailing semicolon, invert doesn't work
     const requestOptions = {
         method: 'GET',
         url: coinApiUrl,
@@ -96,12 +102,40 @@ async function getPricesCoinApi(assets: string[]): Promise<number[]>{
     };
     try {
         var response = await axios.request(requestOptions);
-        var bulkRates = response.data.rates     // returns in alphabetical order
+        var bulkRates = response.data.rates;     // returns in alphabetical order
+        // Can do this once at beginning outside of this function since this won't change unless another asset is added halfway, in which case we need to restart anyway...
         var idxMap: Map<string, number> = new Map( bulkRates.map((rateObj, i) => [rateObj.asset_id_quote, i]));
         // confirm lengths to ensure we got all symbols
         assert(bulkRates.length == assets.length);
         // need to invert since invert flag doesn't work in API if we are also filtering by asset
         var prices = assets.map( (sym, i) => 1 / bulkRates[idxMap.get(sym) ?? -1].rate );        // janky hack to get typescript to not complain about return type
+        return prices;
+    } catch(error){
+        console.log(`CryptoCompare API error:\n  ${error}`);
+        return assets.map((sym, i) => 0);
+    }    
+}
+
+// CoinMarketCap price API
+// https://coinmarketcap.com/api/documentation/v1/#operation/getV1CryptocurrencyQuotesLatest
+async function getPricesCMC(assets: string[]): Promise<number[]>{
+    // Get prices
+    const cmcKey = process.env.CMC_PRO_API_KEY;
+    const cmcUrl = `https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest`;
+    const requestOptions = {
+        method: 'GET',
+        url: cmcUrl,
+        params: {
+            'symbol': `${assets.join(",")}`,
+            'convert': `${baseCurrency}`
+        },
+        headers: {
+            'X-CMC_PRO_API_KEY': cmcKey
+        },
+    };
+    try {
+        var response = await axios.request(requestOptions);
+        var prices = assets.map((sym, i) => response.data.data[sym].quote[baseCurrency]['price']);
         return prices;
     } catch(error){
         console.log(`CryptoCompare API error:\n  ${error}`);
@@ -225,10 +259,21 @@ async function main() {
         ftsoSupportedIndices.map(async idx => await ftsoRegistry.getFtsoSymbol(idx))
     );
 
-    // // Test: get prices for symbols
-    // const prices = await getPrices(1, symbols, new Array(symbols.length).fill(5));
-    // console.log("Symbols: ", symbols);
-    // console.log("Prices: ", prices);
+    const checkPrices = true;
+    if (checkPrices) {
+        // // // Test: get prices for symbols
+        var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
+        var pxsCC   = await getPricesCryptoCompare(symbols);
+        var pxsCApi = await getPricesCoinApi(symbols);
+        var pxsCMC  = await getPricesCMC(symbols);
+        for (var i in ftsoSupportedIndices) {
+            console.log(`${symbols[i]}:`);
+            console.log(`\tCryptoCompare: ${pxsCC  [i]}`);
+            console.log(`\tCoinAPI:       ${pxsCApi[i]}`);
+            console.log(`\tCoinMarketCap: ${pxsCMC [i]}`);
+            console.log(`\tProduction Px: ${pxsProd[i]}`);
+        }
+    }
 
     const ftsos = await Promise.all(
         symbols.map(async sym => await MockFtso.at(await ftsoRegistry.getFtsoBySymbol(sym)))
