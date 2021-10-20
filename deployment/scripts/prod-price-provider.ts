@@ -399,7 +399,6 @@ async function main() {
         var submittedHash: boolean;
         
         try {
-
             const exchangeEncodeABI = priceSUbmitterContract.methods.submitPriceHashes(currentEpoch,ftsoIndices, hashes).encodeABI();
             var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
             var gasPrice = await web3.eth.getGasPrice();
@@ -456,11 +455,11 @@ async function main() {
             // Send error message
             // send mail with defined transport object
             let info = await transporter.sendMail({
-                from: '"FTSO Monitor" <cv40067@gmail.com>',       // sender address
-                to: "cv40067@gmail.com, mczochowski@gmail.com",                // list of receivers
-                subject: `FTSO error for ${priceProviderAccount.address}`,                           // Subject line
-                text: `Price hash submission error for ${priceProviderAccount.address}`,        // plain text body
-                html: `Price hash submission error for <b>${priceProviderAccount.address}</b>`, // html body
+                from: `"FTSO Monitor" <${process.env.GMAIL_USER}@gmail.com>`,                    // sender address
+                to: `${process.env.ERROR_MAIL_LIST}`,                                            // list of receivers
+                subject: `FTSO error for ${priceProviderAccount.address}`,                       // Subject line
+                text: `Price hash submission error for ${priceProviderAccount.address}`,         // plain text body
+                html: `Price hash submission error for <b>${priceProviderAccount.address}</b>`,  // html body
             });
         }
         var endSubmitTime: Date = new Date();
@@ -539,11 +538,11 @@ async function main() {
 
                 // Send error message
                 let info = await transporter.sendMail({
-                    from: '"FTSO Monitor" <cv40067@gmail.com">',       // sender address
-                    to: "cv40067@gmail.com, mczochowski@gmail.com",                // list of receivers
-                    subject: `FTSO error for ${priceProviderAccount.address}`,                           // Subject line
-                    text: `Price reveal submission error for ${priceProviderAccount.address}`,        // plain text body
-                    html: `Price reveal submission error for <b>${priceProviderAccount.address}</b>`, // html body
+                    from: `"FTSO Monitor" <${process.env.GMAIL_USER}@gmail.com>`,                      // sender address
+                    to: `${process.env.ERROR_MAIL_LIST}`,                                              // list of receivers
+                    subject: `FTSO error for ${priceProviderAccount.address}`,                         // Subject line
+                    text: `Price reveal submission error for ${priceProviderAccount.address}`,         // plain text body
+                    html: `Price reveal submission error for <b>${priceProviderAccount.address}</b>`,  // html body
                 });
             }
         }
