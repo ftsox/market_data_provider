@@ -530,7 +530,7 @@ async function main() {
             console.log(`\tSubmitting price hashes: ${Date()}`)
             if (!isTestnet) {
                 web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_submit_mute); 
-                console.log(`\tFirst Provider Finished submission:     ${Date()}`); 
+                console.log(`\tFirst Provider finished submission:     ${Date()}`); 
             }
             await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('transactionHash',(hash) => {
                 console.log('\tsubmitPriceHashes txHash:', hash)
@@ -539,8 +539,8 @@ async function main() {
             })
             .on('error', console.error);                
 
-            console.log(`\tSecond Provider Finished submission:     ${Date()}`); 
-                submittedHash = true;
+            console.log(`\tSecond Provider finished submission:     ${Date()}`); 
+            submittedHash = true;
         } catch (error) {
             // TODO(MCZ): add notifications
             submittedHash = false;
@@ -634,13 +634,15 @@ async function main() {
                 const serializedEthTx = transaction.serialize().toString("hex"); // serialize the transaction
                 if (!isTestnet) {
                     web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_reveal_mute); 
+                    console.log(`\tFirst Provider finished reveal:     ${Date()}`); 
                 }
                 await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('transactionHash',(hash) => {
                     console.log('\trevealPrices txHash:', hash)
                 })
                 .on('receipt',(receipt) => {
                 })
-                .on('error', console.error);                
+                .on('error', console.error);        
+                console.log(`\tSecond Provider finished reveal:     ${Date()}`);         
 
                 console.log(`\tFinished reveal:         ${Date()}`); 
                 console.log("Revealed prices for epoch ", currentEpoch);
