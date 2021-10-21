@@ -7,10 +7,6 @@ const axios = require('axios');
 const { ethers } = require('hardhat');
 const util = require('util')
 const hre = require("hardhat");
-const URL0 = process.env.RPC_NODE_URL
-const privKey = process.env.FTSO_PRIVATE_KEY 
-const privateKey = new (Buffer.from as any)(privKey, "hex") ;
-const URL1 = 'https://songbird.towolabs.com/rpc'
 const { toWei } = web3.utils;
 const { fromWei } = web3.utils;
 var Web3 = require('web3');
@@ -54,14 +50,28 @@ export function submitPriceHash(price: number, random: number, address: string,)
 // Decimals: number of decimal places in Asset USD price
 // note that the actual USD price is the integer value divided by 10^Decimals
 var baseCurrency = 'USD';
+var baseCurrencyLower = baseCurrency.toLowerCase();
+var priceSource = process.env.PRICE_SOURCE;
 async function getPrices(epochId: number, assets: string[], decimals: number[]): Promise<number[]>{
     // Get prices
     try {
         //// Could get multiple prices simultaneously using await Promise.all(...)
         //// Ref: https://dev.to/raviojha/javascript-making-multiple-api-calls-the-right-way-2b29
-        // var prices = await getPricesCryptoCompare(assets);
-        var prices = await getPricesCoinApi(assets);
-        // var prices = await getPricesCMC(assets);
+        let prices;
+        switch (priceSource) {
+            case 'CRYPTOCOMPARE':
+                prices = await getPricesCryptoCompare(assets);
+                break;
+            case 'COINAPI':
+                prices = await getPricesCoinApi(assets);
+                break;
+            case 'CMC':
+                prices = await getPricesCMC(assets);
+                break;
+            default:
+                prices = await getPricesCoinGecko(assets);  // no API key needed
+                break;
+        }
         var pricesAdj = prices.map((p,i) => Math.round(p * 10**decimals[i]))
         return pricesAdj;
     } catch(error){
@@ -71,6 +81,7 @@ async function getPrices(epochId: number, assets: string[], decimals: number[]):
 }
 
 // CryptoCompare price API
+// **Issue**: poor decimal precision
 async function getPricesCryptoCompare(assets: string[]): Promise<number[]>{
     // Get prices
     var ccApiKey = process.env.CC_API_KEY;
@@ -143,6 +154,54 @@ async function getPricesCMC(assets: string[]): Promise<number[]>{
     }    
 }
 
+
+// CoinGecko price API
+// JS docs: https://github.com/miscavage/CoinGecko-API
+// API docs: https://www.coingecko.com/en/api/documentation
+// **Issue**: poor decimal precision
+// NOTE: Needs to be updated per coin list: https://docs.google.com/spreadsheets/d/1wTTuxXt8n9q7C4NDXqQpI3wpKu1_5bGVmP9Xz0XGSyU/edit
+const cgSymbolMapping = {
+    'XRP': 'ripple',
+    'LTC': 'litecoin',
+    'XLM': 'stellar',
+    'DOGE': 'dogecoin',
+    'ADA': 'cardano',
+    'ALGO': 'algorand',
+    'BCH': 'bitcoin-cash',
+    'DGB': 'digibyte',
+    'BTC': 'bitcoin',
+    'ETH': 'ethereum',
+    'FIL': 'filecoin',
+};
+const cgNames = Object.values(cgSymbolMapping)
+async function getPricesCoinGecko(assets: string[]): Promise<number[]>{
+    const coinGeckoUrl = `https://api.coingecko.com/api/v3/simple/price`;
+    const requestOptions = {
+        method: 'GET',
+        url: coinGeckoUrl,
+        params: {
+            'ids': `${cgNames.join(",")}`,
+            'vs_currencies': baseCurrencyLower,
+        },
+        headers: {},
+    };
+
+    try {
+        //// Option 1: CoinGecko js client
+        // const CoinGecko = require('coingecko-api');
+        // const CoinGeckoClient = new CoinGecko();
+        // var response = await CoinGeckoClient.simple.price({ ids: cgNames, vs_currencies: [baseCurrencyLower], });
+        //// Option 2: CoinGecko API
+        var response = await axios.request(requestOptions);
+        var prices = assets.map(sym => response.data[cgSymbolMapping[sym]][baseCurrencyLower]);     // assumes that cgSymbolMapping is complete
+        return prices;
+    } catch(error){
+        console.log(`CryptoCompare API error:\n  ${error}`);
+        return assets.map((sym, i) => 0);
+    }    
+}
+
+// Random generation for hashing of prices to submit in commit phase
 function getRandom(epochId: number, asset: string): number{
     return Math.floor(Math.random() * 1e10);
 }
@@ -164,14 +223,12 @@ var priceProviderPrivateKey = '';
 if (hre.network.name == 'songbird') {
     // special fixed address
     priceSubmitterAddr = '0x1000000000000000000000000000000000000003';
-    // priceProviderPrivateKey = process.env.FTSO_PRIVATE_KEY ?? ''; 
     isTestnet = false;
 }
 else {
     // get from yarn hh_node
     // TODO(MCZ): upgrade to https://hardhat.org/plugins/hardhat-deploy.html
     priceSubmitterAddr = '0x7c2C195CD6D34B8F845992d380aADB2730bB9C6F';
-    // priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122"; 
     isTestnet = true;
 }
 
@@ -188,9 +245,6 @@ let transporter = nodemailer.createTransport({
     },
 });
 
-
-
-
 function err_cb_submit_mute(err:any, ret:any) {
     if (err) {
         console.log("An error occurred", err)
@@ -198,18 +252,26 @@ function err_cb_submit_mute(err:any, ret:any) {
     }
 }
 
-
 function err_cb_reveal_mute(err:any, ret:any) {
     if (err) {
         console.log("An error occurred", err)
         return
     }
 }
+
+
+// Primary submission node
+const URL0 = process.env.RPC_NODE_URL
+// Backup submission node
+const URL1 = 'https://songbird.towolabs.com/rpc'
+// Private key
+const privKey = process.env.FTSO_PRIVATE_KEY 
+const privateKey = new (Buffer.from as any)(privKey, "hex") ;
+
+
 /*
     Main price provider server
 */
-
-// TODO(MCZ): add output logging for better error diagnosis
 async function main() {
     // Times
     console.log(`\n\n\nStarting FTSO provider on ${isTestnet ? 'testnet' : 'mainnet'}`);
@@ -225,11 +287,12 @@ async function main() {
     const web3_backup = new Web3(
         new Web3.providers.HttpProvider(URL1)
     );
-    const priceSUbmitterContract = new web3.eth.Contract(JSON.parse(JSON.stringify(priceSUbmitterAbi)), priceSubmitterAddr);
+    const priceSubmitterContract = new web3.eth.Contract(JSON.parse(JSON.stringify(priceSUbmitterAbi)), priceSubmitterAddr);
 
     
     // Get Price Provider account based on the config
     // Just the first from autogenerated accounts
+    // priceProviderPrivateKey = process.env.FTSO_PRIVATE_KEY ?? ''; 
     // const priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122";
     // const priceProviderAccount = web3.eth.accounts.privateKeyToAccount(priceProviderPrivateKey);
     const accounts = await ethers.getSigners();
@@ -251,9 +314,8 @@ async function main() {
     console.log(`\tvoterWhitelister:    ${voterWhitelister.address}`)   // 0xa76906EfBA6dFAe155FfC4c0eb36cDF0A28ae24D
 
     // Get indices for specific symbols
-    // const symbols = ["SGB", "XRP", "LTC", "XLM", "XDG", "ADA", "ALGO", "BCH", "DGB", "BTC"];
     // const symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
-    // Note: this can be replaced by a single call based on live contract
+    // Note: this can be replaced by a single call based on live ftsoRegistry contract
     const ftsoSupportedIndices = (await ftsoRegistry.getSupportedIndices()).map(idx => (idx.toNumber()));
     const symbols = await Promise.all(
         ftsoSupportedIndices.map(async idx => await ftsoRegistry.getFtsoSymbol(idx))
@@ -261,18 +323,21 @@ async function main() {
 
     const checkPrices = true;
     if (checkPrices) {
-        // // // Test: get prices for symbols
+        // Test: get prices for symbols
         var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
         var pxsCC   = await getPricesCryptoCompare(symbols);
         var pxsCApi = await getPricesCoinApi(symbols);
         var pxsCMC  = await getPricesCMC(symbols);
+        var pxsCG   = await getPricesCoinGecko(symbols);
         for (var i in ftsoSupportedIndices) {
             console.log(`${symbols[i]}:`);
             console.log(`\tCryptoCompare: ${pxsCC  [i]}`);
             console.log(`\tCoinAPI:       ${pxsCApi[i]}`);
             console.log(`\tCoinMarketCap: ${pxsCMC [i]}`);
+            console.log(`\tCoinGecko:     ${pxsCG  [i]}`);
             console.log(`\tProduction Px: ${pxsProd[i]}`);
         }
+        console.log(`Price Source: ${priceSource}`)
     }
 
     const ftsos = await Promise.all(
@@ -444,7 +509,7 @@ async function main() {
         var submittedHash: boolean;
         
         try {
-            const exchangeEncodeABI = priceSUbmitterContract.methods.submitPriceHashes(currentEpoch,ftsoIndices, hashes).encodeABI();
+            const exchangeEncodeABI = priceSubmitterContract.methods.submitPriceHashes(currentEpoch,ftsoIndices, hashes).encodeABI();
             var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
             var gasPrice = await web3.eth.getGasPrice();
             const transactionObject = {
@@ -463,8 +528,10 @@ async function main() {
             transaction.sign(privateKey); // sign a transaction
             const serializedEthTx = transaction.serialize().toString("hex"); // serialize the transaction
             console.log(`\tSubmitting price hashes: ${Date()}`)
-            web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_submit_mute); 
-            console.log(`\tFirst Provider Finished submission:     ${Date()}`); 
+            if (!isTestnet) {
+                web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_submit_mute); 
+                console.log(`\tFirst Provider Finished submission:     ${Date()}`); 
+            }
             await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('transactionHash',(hash) => {
                 console.log('\tsubmitPriceHashes txHash:', hash)
             })
@@ -547,9 +614,8 @@ async function main() {
         if (submittedHash) {
             console.log(`\tSubmitting price reveal: ${Date()}`)
             try {
-                
-                const exchangeEncodeABI = priceSUbmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).encodeABI();
-                var gasLimit = await priceSUbmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: priceProviderAccount.address});
+                const exchangeEncodeABI = priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).encodeABI();
+                var gasLimit = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: priceProviderAccount.address});
                 var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
                 var gasPrice = await web3.eth.getGasPrice();
                 const transactionObject = {
@@ -566,7 +632,9 @@ async function main() {
                 let transaction = new EthTx(transactionObject);
                 transaction.sign(privateKey); // sign a transaction
                 const serializedEthTx = transaction.serialize().toString("hex"); // serialize the transaction
-                web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_reveal_mute); 
+                if (!isTestnet) {
+                    web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_reveal_mute); 
+                }
                 await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('transactionHash',(hash) => {
                     console.log('\trevealPrices txHash:', hash)
                 })

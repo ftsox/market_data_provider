@@ -209,14 +209,19 @@ cgSymbolMapping = {
     'FIL': 'filecoin',
 };
 cgNames = Object.values(cgSymbolMapping)
+var revCgMap = {};
+Object.keys(cgSymbolMapping).map( (sym, idx) => {
+    revCgMap[cgSymbolMapping[sym]] = sym;
+});
 
 // // loop over each
 // idx = 0;
 // cgId = cgSymbolMapping[symbols[idx]];
 // data = await CoinGeckoClient.coins.fetch(cgId, {});
 // data.data.market_data.current_price['usd']
-
-data = await CoinGeckoClient.simple.price({ ids: cgNames, vs_currencies: ['usd'], });
+baseCurrencyLower = 'usd'
+data = await CoinGeckoClient.simple.price({ ids: cgNames, vs_currencies: [baseCurrencyLower], });
+symbols.map(sym => data.data[cgSymbolMapping[sym]][baseCurrencyLower]);
 // Only gives 2 decimals for XRP
 
 

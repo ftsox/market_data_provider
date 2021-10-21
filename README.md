@@ -57,7 +57,14 @@ See `scratch/console_commands.js` for some examples
 
 ### Docker
 
-Build the image in project root directory: `docker build .` then push to docker hub: `docker push bbftso/ftsojs`. Note that the images need to be tagged before pushing: `docker tag image_hash bbftso/ftsojs`.
+Build the image in project root directory: `docker build .` then push to docker hub: `docker push bbftso/ftsojs`. Note that the images need to be tagged before pushing: `docker tag image_hash bbftso/ftsojs`:
+
+```
+docker build .
+docker image ls
+docker tag [image_hash] bbftso/ftsojs:[TAG]
+docker push bbftso/ftsojs:[TAG]
+```
 
 ###Deployment
 Make sure docker-compose and docker are installed on the instance.
@@ -69,15 +76,24 @@ sudo apt install docker
 sudo apt install docker-compose
 ```
 
-Clone the git repo
+<!-- Clone the git repo
 ```
 git clone https://github.com/mczochowski/ftso.git
 cd ftso
+``` -->
+
+Make a new directory:
+```
+mkdir ftso
+cd ftso
 ```
 
-Setup the enviornment variable in the `docker-compose.yml` file similarly to the `.env` file *without quotes*, then run: 
+Copy over a `docker-compose.yml` file to the instance ([template](https://github.com/mczochowski/ftso/blob/master/docker-compose.yml)).
+
+Setup the enviornment variable in the `docker-compose.yml` file similarly to the `.env` file *without quotes* (update docker-compose.yml to pull from `bbftso/ftsojs:[TAG]` using the tag set above or a standard tag), then run: 
 
 ```
+docker-compose pull
 sudo docker-compose up -d
 ```
 
