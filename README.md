@@ -93,7 +93,7 @@ Copy over a `docker-compose.yml` file to the instance ([template](https://github
 Setup the enviornment variable in the `docker-compose.yml` file similarly to the `.env` file *without quotes* (update docker-compose.yml to pull from `bbftso/ftsojs:[TAG]` using the tag set above or a standard tag), then run: 
 
 ```
-docker-compose pull
+sudo docker-compose pull
 sudo docker-compose up -d
 ```
 

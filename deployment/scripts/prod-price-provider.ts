@@ -51,8 +51,21 @@ export function submitPriceHash(price: number, random: number, address: string,)
 // note that the actual USD price is the integer value divided by 10^Decimals
 var baseCurrency = 'USD';
 var baseCurrencyLower = baseCurrency.toLowerCase();
-var priceSource = process.env.PRICE_SOURCE;
-async function getPrices(epochId: number, assets: string[], decimals: number[]): Promise<number[]>{
+var priceSource: string = process.env.PRICE_SOURCE || '';
+// var pricesLast = [];
+var pricesLast = {};    // Dictionary of arrays indexed by assets (in case we are ever calling for different sets of assets)
+// TODO: have this and child functions return a validPrice flag (boolean)
+async function getPrices(epochId: number, assets: string[], decimals: number[], priceSource: string): Promise<number[]>{
+    var assetsUid = assets.join(',');   // key on asset list as unique identifier
+    var nAssets = assets.length;
+    if (nAssets == 0) {
+        return [];
+    }
+    // if we haven't initialized last price, start it off with -1s
+    // if (pricesLast[assetsUid].length == 0 && nAssets > 0) {
+    if (!(assetsUid in pricesLast)) {
+        pricesLast[assetsUid] = new Array(nAssets).fill(-1);
+    }
     // Get prices
     try {
         //// Could get multiple prices simultaneously using await Promise.all(...)
@@ -68,15 +81,34 @@ async function getPrices(epochId: number, assets: string[], decimals: number[]):
             case 'CMC':
                 prices = await getPricesCMC(assets);
                 break;
+            case 'COINGECKO':
+                prices = await getPricesCoinGecko(assets);  // no API key needed
+                break;
+            case 'ERROR':
+                // Error case for testing
+                prices = new Array(nAssets).fill(-1);
+                break;
             default:
                 prices = await getPricesCoinGecko(assets);  // no API key needed
                 break;
         }
+        // var validPrice = prices.reduce((partial_sum, a) => partial_sum + a,0) > 0;
+        var validPrice = prices[0] > 0;
         var pricesAdj = prices.map((p,i) => Math.round(p * 10**decimals[i]))
+        // Check if price source function returned array of -1, signalling an error
+        if (!validPrice) {
+            // If invalid, return last valid pricing
+            pricesAdj = pricesLast[assetsUid];
+        } else {
+            // store last prices
+            pricesLast[assetsUid] = pricesAdj;
+        }
         return pricesAdj;
     } catch(error){
         console.log(`Get prices error:\n  ${error}`);
-        return assets.map((sym, i) => 0);   // Return 0's, TOOD: update - maybe return last prices?
+        // return assets.map((sym, i) => -1);   // Return 0's, TOOD: update - maybe return last prices?
+        // If invalid, return last valid pricing
+        return pricesLast[assetsUid];
     }
 }
 
@@ -92,7 +124,7 @@ async function getPricesCryptoCompare(assets: string[]): Promise<number[]>{
         return prices;
     } catch(error){
         console.log(`CryptoCompare API error:\n  ${error}`);
-        return assets.map((sym, i) => 0);
+        return assets.map((sym, i) => -1);
     }
 }
 
@@ -100,6 +132,8 @@ async function getPricesCryptoCompare(assets: string[]): Promise<number[]>{
 // https://docs.coinapi.io/#md-docs
 // List of asset symbols: https://www.coinapi.io/integration
 // Detail on how market price is calculated: https://support.coinapi.io/hc/en-us/articles/360018953291-How-are-exchange-rates-calculated-
+// TODO: need to switch to websockets for live data per https://docs.coinapi.io/#md-rest-api
+// **issue** updates on a > 2 min frequency from empirical testing
 async function getPricesCoinApi(assets: string[]): Promise<number[]>{
     // Get prices
     const coinApiKey = process.env.COINAPI_KEY;
@@ -122,13 +156,14 @@ async function getPricesCoinApi(assets: string[]): Promise<number[]>{
         var prices = assets.map( (sym, i) => 1 / bulkRates[idxMap.get(sym) ?? -1].rate );        // janky hack to get typescript to not complain about return type
         return prices;
     } catch(error){
-        console.log(`CryptoCompare API error:\n  ${error}`);
-        return assets.map((sym, i) => 0);
+        console.log(`CoinAPI API error:\n  ${error}`);
+        return assets.map((sym, i) => -1);
     }    
 }
 
 // CoinMarketCap price API
 // https://coinmarketcap.com/api/documentation/v1/#operation/getV1CryptocurrencyQuotesLatest
+// Has a 60 second cache per the above, so not a very good option
 async function getPricesCMC(assets: string[]): Promise<number[]>{
     // Get prices
     const cmcKey = process.env.CMC_PRO_API_KEY;
@@ -149,8 +184,8 @@ async function getPricesCMC(assets: string[]): Promise<number[]>{
         var prices = assets.map((sym, i) => response.data.data[sym].quote[baseCurrency]['price']);
         return prices;
     } catch(error){
-        console.log(`CryptoCompare API error:\n  ${error}`);
-        return assets.map((sym, i) => 0);
+        console.log(`CoinMarketCap API error:\n  ${error}`);
+        return assets.map((sym, i) => -1);
     }    
 }
 
@@ -159,6 +194,7 @@ async function getPricesCMC(assets: string[]): Promise<number[]>{
 // JS docs: https://github.com/miscavage/CoinGecko-API
 // API docs: https://www.coingecko.com/en/api/documentation
 // **Issue**: poor decimal precision
+// Also has a very bad update frequency of 1 to 10 minutes per https://www.coingecko.com/en/faq
 // NOTE: Needs to be updated per coin list: https://docs.google.com/spreadsheets/d/1wTTuxXt8n9q7C4NDXqQpI3wpKu1_5bGVmP9Xz0XGSyU/edit
 const cgSymbolMapping = {
     'XRP': 'ripple',
@@ -196,8 +232,8 @@ async function getPricesCoinGecko(assets: string[]): Promise<number[]>{
         var prices = assets.map(sym => response.data[cgSymbolMapping[sym]][baseCurrencyLower]);     // assumes that cgSymbolMapping is complete
         return prices;
     } catch(error){
-        console.log(`CryptoCompare API error:\n  ${error}`);
-        return assets.map((sym, i) => 0);
+        console.log(`CoinGecko API error:\n  ${error}`);
+        return assets.map((sym, i) => -1);
     }    
 }
 
@@ -321,24 +357,34 @@ async function main() {
         ftsoSupportedIndices.map(async idx => await ftsoRegistry.getFtsoSymbol(idx))
     );
 
-    const checkPrices = true;
-    if (checkPrices) {
-        // Test: get prices for symbols
-        var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
-        var pxsCC   = await getPricesCryptoCompare(symbols);
-        var pxsCApi = await getPricesCoinApi(symbols);
-        var pxsCMC  = await getPricesCMC(symbols);
-        var pxsCG   = await getPricesCoinGecko(symbols);
-        for (var i in ftsoSupportedIndices) {
-            console.log(`${symbols[i]}:`);
-            console.log(`\tCryptoCompare: ${pxsCC  [i]}`);
-            console.log(`\tCoinAPI:       ${pxsCApi[i]}`);
-            console.log(`\tCoinMarketCap: ${pxsCMC [i]}`);
-            console.log(`\tCoinGecko:     ${pxsCG  [i]}`);
-            console.log(`\tProduction Px: ${pxsProd[i]}`);
-        }
-        console.log(`Price Source: ${priceSource}`)
-    }
+    // console.log(`Testing pricing`);
+    // console.log(`Start: pricesLast\n${JSON.stringify(pricesLast)}`);
+    // // priceSource='CRYPTOCOMPARE'
+    // priceSource='COINAPI'
+
+    // console.log(`Getting prices from ${priceSource}`);
+    // var pxsTest = await getPrices(1, symbols, new Array(symbols.length).fill(5), priceSource);
+    // console.log(`\t${pxsTest}`);
+    // console.log(`After: pricesLast\n${JSON.stringify(pricesLast)}`);
+
+    // console.log(`Getting prices from ERROR source`);
+    // var pxsTest = await getPrices(1, symbols, new Array(symbols.length).fill(5), 'ERROR');
+    // console.log(`\t${pxsTest}`);
+    // console.log(`After: pricesLast\n${JSON.stringify(pricesLast)}`);
+    
+    // await sleep(5 * 1000);
+    // console.log(`Getting prices from ${priceSource}`);
+    // var pxsTest = await getPrices(1, symbols, new Array(symbols.length).fill(5), priceSource);
+    // console.log(`\t${pxsTest}`);
+    // console.log(`After: pricesLast\n${JSON.stringify(pricesLast)}`);    
+    // // var pxsProd = await getPrices(initialEpoch, symbols, decimals, priceSource);
+
+    // // test update frequency
+    // for (let i = 0; i < 36; i++){
+    //     var pxsTest = await getPrices(1, symbols, new Array(symbols.length).fill(5), priceSource);
+    //     console.log(`Loop ${i}:\t${pxsTest}`);
+    // }
+    // return;
 
     const ftsos = await Promise.all(
         symbols.map(async sym => await MockFtso.at(await ftsoRegistry.getFtsoBySymbol(sym)))
@@ -425,6 +471,28 @@ async function main() {
     console.log(`\tsubmitPeriod (secs): ${submitPeriod}`);
     console.log(`\trevealPeriod (secs): ${revealPeriod}`);
     
+
+    const checkPrices = true;
+    if (checkPrices) {
+        // Test: get prices for symbols
+        var initialEpoch = Math.floor(((await getTime()) - firstEpochStartTime) / submitPeriod);
+        // var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
+        var pxsProd = await getPrices(initialEpoch, symbols, decimals, priceSource);    
+        var pxsCC   = await getPricesCryptoCompare(symbols);
+        var pxsCApi = await getPricesCoinApi(symbols);
+        var pxsCMC  = await getPricesCMC(symbols);
+        var pxsCG   = await getPricesCoinGecko(symbols);
+        for (var i in ftsoSupportedIndices) {
+            console.log(`${symbols[i]}:`);
+            console.log(`\tCryptoCompare: ${pxsCC  [i]}`);
+            console.log(`\tCoinAPI:       ${pxsCApi[i]}`);
+            console.log(`\tCoinMarketCap: ${pxsCMC [i]}`);
+            console.log(`\tCoinGecko:     ${pxsCG  [i]}`);
+            console.log(`\tProduction Px: ${pxsProd[i]}`);
+        }
+        console.log(`Price Source: ${priceSource}`)
+    }
+    
     // Sync time to start on next full transaction id
     // For a real setting, make sure that computer time is synced with a reliable time provider
     // Take blockchain time
@@ -494,7 +562,7 @@ async function main() {
         const randoms = symbols.map(sym => getRandom(currentEpoch, sym)); 
 
         // const prices = symbols.map(sym => getPrice(currentEpoch, sym)); // Just a mock here, real price should not be random
-        const prices = await getPrices(currentEpoch, symbols, decimals);
+        const prices = await getPrices(currentEpoch, symbols, decimals, priceSource);
 
         console.log(`\tFinished getting prices: ${Date()}`); 
 

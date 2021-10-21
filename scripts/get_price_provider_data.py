@@ -157,8 +157,6 @@ currentStateOfRewards = contract_call(ftsoRewardManager.functions.getStateOfRewa
 pendingRewards = np.sum(currentStateOfRewards['_rewardAmounts'])
 print(f'Pending rewards for provider {priceProviderAddress} as of reward epoch {currentRewardEpoch}: {fromWei(pendingRewards):.4f}')
 
-from types import SimpleNamespace as sn
-
 
 # Get prices from all nodes
 # Estimate average block time (in seconds) over past N blocks
@@ -177,6 +175,7 @@ fromBlock = toBlock - lockbackBlocks
 
 rewardHitRates = []
 finalPxDfs = []
+individualAnalysis = False
 for idx in ftsoSupportedIndices:
     # idx = 0
     print(f'Starting asset {idx}')
@@ -204,7 +203,6 @@ for idx in ftsoSupportedIndices:
 
     finalPxDfs.append(finalPxDf)
 
-    individualAnalysis = False
     if individualAnalysis:
         combDf = finalPxDf.copy()
         # submitted prices for the particular provider
@@ -245,9 +243,10 @@ pxEpochs = finalPxDfsComb.index.to_series()
 startPxEpoch = pxEpochs.min()
 endPxEpoch = pxEpochs.max()
 
-currencyHitRates = pd.DataFrame(zip(symbols, rewardHitRates), columns=['Asset', 'HitRate'])
-print(currencyHitRates)
-print(f'Average hit rate across all assets: {currencyHitRates["HitRate"].mean() * 100:.4f}%')
+if individualAnalysis:
+    currencyHitRates = pd.DataFrame(zip(symbols, rewardHitRates), columns=['Asset', 'HitRate'])
+    print(currencyHitRates)
+    print(f'Average hit rate across all assets: {currencyHitRates["HitRate"].mean() * 100:.4f}%')
 
 
 
@@ -283,10 +282,13 @@ for pidx, providerAddress in enumerate(ftsoProviders):
     provDf = pd.DataFrame(providerPricesResults)
     # if the provider hasn't been active then there will be no rows and set_index() will fail
     if len(provDf) > 0:
-        provDf.set_index('epochId', inplace=True)
+        # provDf.set_index('epochId', inplace=True)
+        # sometimes there are duplicate epoch entries where people reveal prices piecemeal,
+        # so use any numeric aggregating function to eliminate duplicates and nans
+        provDf = provDf.groupby('epochId').first()
     else:
         # create a df with nans
-        provDf = pd.DataFrame(index=pxEpochs, columns=symbols)
+        provDf = pd.DataFrame(index=pxEpochs, columns=symbols+['timestamp'])
 
     # store result
     provDfs.append(provDf)
@@ -312,10 +314,10 @@ for pidx, providerAddress in enumerate(ftsoProviders):
     provSubmitDf = pd.DataFrame(providerPriceHashesResults)
     # if the provider hasn't been active then there will be no rows and set_index() will fail
     if len(provSubmitDf) > 0:
-        provSubmitDf.set_index('epochId', inplace=True)
         # Drop epochs where there were multiple submissions
-        provSubmitDf.drop_duplicates(subset=['epochId'], keep='last', inplace=True)
         # provSubmitDf.duplicated('epochId').sum()
+        provSubmitDf.drop_duplicates(subset=['epochId'], keep='last', inplace=True)
+        provSubmitDf.set_index('epochId', inplace=True)
     else:
         # create a df with nans
         provSubmitDf = pd.DataFrame(index=pxEpochs, columns=['timestamp'])
@@ -329,7 +331,7 @@ for pidx, providerAddress in enumerate(ftsoProviders):
 
 
 # # TODO: can maybe do this faster by getting all events 
-# # actually appears to be way slower
+# # **actually** appears to be way slower
 # # https://web3py.readthedocs.io/en/stable/filters.html#event-log-filters
 # # topics: 
 # # PriceHashesSubmitted
@@ -384,7 +386,7 @@ pxDataComb = pd.concat([finalPxDfsComb, provDfsCombByAsset], axis=1)
 # pxDataComb = pxDataComb.reindex(pd.MultiIndex.from_product(pxDataComb.columns.levels), axis=1)
 # pxDataComb.columns.get_level_values(0).unique()
 
-asset = 'XRP'
+# asset = 'XRP'
 hitDfs = [
       (pxDataComb[asset][ftsoProviders].ge(pxDataComb[asset]['lowRewardPrice'],  axis=0)) 
     & (pxDataComb[asset][ftsoProviders].le(pxDataComb[asset]['highRewardPrice'], axis=0))
@@ -392,8 +394,8 @@ hitDfs = [
 ]
 hitDfComb = pd.concat(hitDfs, axis=1, keys=symbols)
 
-hitDfComb.sum(axis=0).swaplevel(1,0).unstack(level=1) / nPriceEpochs
 
+### Overall Hit Rates
 provSummaryDf = hitDfComb.sum(axis=0).swaplevel(1,0).unstack(level=1) / nPriceEpochs
 provSummaryDf['Mean'] = provSummaryDf.mean(axis=1)
 provSummaryDf['Uptime'] = uptimePct
@@ -407,19 +409,42 @@ submitBuffers = -(submitTsDf[ftsoProviders].sub(submitTsDf['epochEnd'], axis=0))
 provSummaryDf['MeanSubmitBuffer'] = submitBuffers.mean(axis=0)
 provSummaryDf['SubmitBufferStd'] = submitBuffers.std(axis=0)
 
-
-
 # Get list of providers by hit rate
 provSummaryDf.index.name = 'Provider'
 print('Providers by Mean Reward Hit Rate')
 print(provSummaryDf.sort_values(by='Mean', ascending=False).reset_index()[['Provider', 'Mean', 'Uptime', 'MeanSubmitBuffer', 'SubmitBufferStd']])
 
+
+### Rolling avg hit rates
+hitRateByEpoch = hitDfComb.groupby(level=[1],axis=1).sum()/nAssets
+# plot rolling average
+rollingHitRates = hitRateByEpoch.rolling(100, min_periods=10, axis=0).mean()
+# rollingHitRates.plot();plt.show()
+providersOfInterest = provSummaryDf.sort_values(by='Mean', ascending=False).iloc[:5].index.to_list() + [
+    '0x153aD30381b11DCE62f349c97a54c2a58956B992',
+    '0xe60784D1c661a8D8eE19b442999bB71279F0A91f',
+    '0x4fE889F450EcA4decd8a65B6B6eC5b7Db8EaB12E',
+    '0xE76Bc13136338f27363425FcbCB36967B0540176',
+]
+fig, ax = plt.subplots(figsize=(12, 6))
+fig.subplots_adjust(left=0.1, right=0.55)
+sns.lineplot(data=rollingHitRates[providersOfInterest])
+ax.set_title('Rolling Average Hit Rate (100 Epoch Window)')
+plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+plt.show()
+
+# Just XRP
+hitDfComb['XRP'][priceProviderAddress].rolling(50, min_periods=10, axis=0).mean()
+
+# dt.datetime.fromtimestamp(submitTsDf.loc[16150].epochEnd, tz=dt.timezone.utc).isoformat()
+
+### Plotting
 # https://seaborn.pydata.org/tutorial/color_palettes.html
 # fig1 = plt.figure(figsize=(5.5,4),dpi=300)
 # fig = plt.gcf()
 fig, ax = plt.subplots(figsize=(10, 6))
 ax = sns.heatmap(
-    provSummaryDf.sort_values(by='Mean', ascending=False), 
+    provSummaryDf[symbols + ['Mean','Uptime']].sort_values(by='Mean', ascending=False), 
     annot=True, 
     fmt='.1%', 
     xticklabels = 1,
@@ -431,7 +456,8 @@ ax = sns.heatmap(
     # square=True,
     )
 ax.set_title(f'Price Provider Reward Hit Rates between Epochs {startPxEpoch} to {endPxEpoch}')
-plt.yticks(rotation=30, fontsize=5) 
+# plt.yticks(rotation=30, fontsize=5) 
+plt.yticks(fontsize=5) 
 # ax.set_xlabel("Assets", fontsize = 20)
 # ax.set_ylabel("Provider", fontsize = 1)
 ax.xaxis.tick_top() # x axis on top
