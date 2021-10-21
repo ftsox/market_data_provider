@@ -9,6 +9,7 @@ services:
      - CC_API_KEY=
      - COINAPI_KEY=
      - CMC_PRO_API_KEY=
+     - PRICE_SOURCE=
      - RPC_NODE_URL=
      - FTSO_PRIVATE_KEY=
      - GMAIL_USER=
