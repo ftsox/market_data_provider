@@ -66,6 +66,9 @@ docker tag [image_hash] bbftso/ftsojs:[TAG]
 docker push bbftso/ftsojs:[TAG]
 ```
 
+Note that the docker image is optimized to be as compressed as possible and therefore, certain compromises were made in the process of building the image:
+  * The ABI files exist in the `docker_prod` folder 
+
 ###Deployment
 Make sure docker-compose and docker are installed on the instance.
 

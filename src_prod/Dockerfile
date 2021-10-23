@@ -1,10 +1,10 @@
 FROM node:14-alpine3.10 as ts-compiler
 WORKDIR /usr/app
-COPY package*.json ./
-COPY tsconfig*.json ./
-COPY ../deployment/scripts/prod-price-provider.ts ./
+COPY ./docker_prod/package*.json ./
+COPY ./docker_prod/tsconfig*.json ./
+COPY ./deployment/scripts/prod-price-provider.ts ./
 RUN npm install
-COPY . ./
+COPY ./docker_prod ./
 RUN npm run build
 
 FROM node:14-alpine3.10 as ts-remover

@@ -1,30 +1,22 @@
 /*
     Configuration
 */
+require('dotenv').config();
 let sleep = require('util').promisify(setTimeout);
 const axios = require('axios');
-// Hardhat
-const { ethers } = require('hardhat');
-const util = require('util')
-const hre = require("hardhat");
-const { toWei } = web3.utils;
-const { fromWei } = web3.utils;
+const URL0 = process.env.RPC_NODE_URL
+const privKey = process.env.FTSO_PRIVATE_KEY 
+const { ethers } = require("ethers");
+const URL1 = 'https://songbird.towolabs.com/rpc'
 var Web3 = require('web3');
+const { fromWei } = Web3.utils;
 const EthTx = require("ethereumjs-tx");
-const { BN, bufferToHex, privateToAddress, toBuffer } = require("ethereumjs-util");
 const math = require("mathjs");
 const nodemailer = require("nodemailer");
 // @ts-ignore
-import { time, expectEvent } from '@openzeppelin/test-helpers';
-import { toBN } from '../../test/utils/test-helpers';
-import { 
-    IFtsoRegistryInstance, 
-    IVoterWhitelisterInstance,
-    IPriceSubmitterInstance,
-    IFtsoInstance,
-} from "../../typechain-truffle";
+import { time } from '@openzeppelin/test-helpers';
 
-
+var isTestnet: boolean = false; 
 /*
     Helper Functions
 */
@@ -33,17 +25,17 @@ import {
 // Average block time: https://songbird-explorer.flare.network/
 // 2.6 secs as of 2021-10-10
 // So this could be off by around 2.6 seconds (plus some extra consensus time sync error)
-async function getTime(): Promise<number>{
+async function getTime(web3: any): Promise<number>{
     if (isTestnet) {
         await time.advanceBlock();
     }
-    const blockNum = await ethers.provider.getBlockNumber();
-    const block = await ethers.provider.getBlock(blockNum);
+    const blockNum = await web3.eth.getBlockNumber();
+    const block = await web3.eth.getBlock(blockNum);
     const timestamp = block.timestamp;
-    return timestamp
+    return timestamp as number;
 }
 
-export function submitPriceHash(price: number, random: number, address: string,): string {
+export function submitPriceHash(price: number, random: number, address: string, web3: any): string {
     return ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode([ "uint256", "uint256", "address" ], [price.toString(), random.toString(), address]))
 }
 
@@ -151,7 +143,10 @@ async function getPricesCoinApi(assets: string[]): Promise<number[]>{
         // Can do this once at beginning outside of this function since this won't change unless another asset is added halfway, in which case we need to restart anyway...
         var idxMap: Map<string, number> = new Map( bulkRates.map((rateObj, i) => [rateObj.asset_id_quote, i]));
         // confirm lengths to ensure we got all symbols
-        assert(bulkRates.length == assets.length);
+        if(bulkRates.length != assets.length)
+        {
+            throw 'CoinApi is TRASH!';
+        }
         // need to invert since invert flag doesn't work in API if we are also filtering by asset
         var prices = assets.map( (sym, i) => 1 / bulkRates[idxMap.get(sym) ?? -1].rate );        // janky hack to get typescript to not complain about return type
         return prices;
@@ -247,27 +242,15 @@ function getRandom(epochId: number, asset: string): number{
     Setup
 */
 
-const MockPriceSubmitter = artifacts.require("MockPriceSubmitter");
-const MockFtsoRegistry = artifacts.require("MockFtsoRegistry");
-const MockVoterWhitelister = artifacts.require("MockVoterWhitelister");
-const MockFtso = artifacts.require("MockNpmFtso");
-
 // Price submitter is at a fixed address, change this to the address reported by `yarn hh_node`.
 var priceSubmitterAddr = '';
 var isTestnet = false;
 var priceProviderPrivateKey = '';
-if (hre.network.name == 'songbird') {
-    // special fixed address
-    priceSubmitterAddr = '0x1000000000000000000000000000000000000003';
-    isTestnet = false;
-}
-else {
-    // get from yarn hh_node
-    // TODO(MCZ): upgrade to https://hardhat.org/plugins/hardhat-deploy.html
-    priceSubmitterAddr = '0x7c2C195CD6D34B8F845992d380aADB2730bB9C6F';
-    isTestnet = true;
-}
 
+// special fixed address
+priceSubmitterAddr = '0x1000000000000000000000000000000000000003';
+// priceProviderPrivateKey = process.env.FTSO_PRIVATE_KEY ?? ''; 
+isTestnet = false;
 
 // Email for notifications
 // create reusable transporter object using the default SMTP transport
@@ -281,80 +264,61 @@ let transporter = nodemailer.createTransport({
     },
 });
 
-function err_cb_submit_mute(err:any, ret:any) {
-    if (err) {
-        console.log("An error occurred", err)
-        return
-    }
-}
-
-function err_cb_reveal_mute(err:any, ret:any) {
-    if (err) {
-        console.log("An error occurred", err)
-        return
-    }
-}
-
-
-// Primary submission node
-const URL0 = process.env.RPC_NODE_URL
-// Backup submission node
-const URL1 = 'https://songbird.towolabs.com/rpc'
-// Private key
-const privKey = process.env.FTSO_PRIVATE_KEY 
-const privateKey = new (Buffer.from as any)(privKey, "hex") ;
-
-
 /*
     Main price provider server
 */
-async function main() {
-    // Times
-    console.log(`\n\n\nStarting FTSO provider on ${isTestnet ? 'testnet' : 'mainnet'}`);
-    console.log(`\tStart time: ${Date()}`); 
-    console.log(`Time check:`);
-    console.log(`\tChain time:  ${await getTime()}`);
-    console.log(`\tSystem time: ${(new Date()).getTime() / 1000}`);
-    const priceSUbmitterAbi = require("./priceSubmitter.json");
 
+
+// TODO(MCZ): add output logging for better error diagnosis
+async function main() {
     const web3 = new Web3(
         new Web3.providers.HttpProvider(URL0)
     );
     const web3_backup = new Web3(
         new Web3.providers.HttpProvider(URL1)
     );
-    const priceSubmitterContract = new web3.eth.Contract(JSON.parse(JSON.stringify(priceSUbmitterAbi)), priceSubmitterAddr);
+    // Times
+    console.log(`\n\n\nStarting FTSO provider on ${isTestnet ? 'testnet' : 'mainnet'}`);
+    console.log(`\tStart time: ${Date()}`); 
+    console.log(`Time check:`);
+    console.log(`\tChain time:  ${await getTime(web3)}`);
+    console.log(`\tSystem time: ${(new Date()).getTime() / 1000}`);
+    
 
+    const priceSubmitterAbi = require("./priceSubmitter.json");
+    const MockFtsoRegistry = require("./MockFtsoRegistry.json");
+    const MockVoterWhitelister = require("./MockVoterWhitelister.json");
+    const MockFtso = require("./MockNpmFtso.json")
+    const priceSubmitterContract = new web3.eth.Contract(JSON.parse(JSON.stringify(priceSubmitterAbi)), priceSubmitterAddr);
+    const ftsoRegistry = new web3.eth.Contract(JSON.parse(JSON.stringify(MockFtsoRegistry)), await priceSubmitterContract.methods.getFtsoRegistry().call());
+    const voterWhitelister = new web3.eth.Contract(JSON.parse(JSON.stringify(MockVoterWhitelister)), await priceSubmitterContract.methods.getVoterWhitelister().call());
     
     // Get Price Provider account based on the config
     // Just the first from autogenerated accounts
-    // priceProviderPrivateKey = process.env.FTSO_PRIVATE_KEY ?? ''; 
     // const priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122";
     // const priceProviderAccount = web3.eth.accounts.privateKeyToAccount(priceProviderPrivateKey);
-    const accounts = await ethers.getSigners();
-    const priceProviderAccount = accounts[0];
+    const priceProviderAccount = web3.eth.accounts.privateKeyToAccount(`0x${privKey}`);
 
     // Get balance of addresses
-    var sgbBalance = fromWei((await ethers.provider.getBalance(priceProviderAccount.address)).toString());
+    var sgbBalance = fromWei((await web3.eth.getBalance(priceProviderAccount.address)).toString());
     console.log(`FTSO provider address: ${priceProviderAccount.address}`);
     console.log(`          SGB Balance: ${sgbBalance}`);
 
-    // Initialize data
-    const priceSubmitter: IPriceSubmitterInstance = await MockPriceSubmitter.at(priceSubmitterAddr);
-    const ftsoRegistry: IFtsoRegistryInstance = await MockFtsoRegistry.at(await priceSubmitter.getFtsoRegistry());
-    const voterWhitelister: IVoterWhitelisterInstance = await MockVoterWhitelister.at(await priceSubmitter.getVoterWhitelister());
 
     console.log(`Addresses:`)
-    console.log(`\tpriceSubmitter:      ${priceSubmitter.address}`)     // 0x1000000000000000000000000000000000000003   
-    console.log(`\tftsoRegistry:        ${ftsoRegistry.address}`)       // 0x6D222fb4544ba230d4b90BA1BfC0A01A94E6cB23
-    console.log(`\tvoterWhitelister:    ${voterWhitelister.address}`)   // 0xa76906EfBA6dFAe155FfC4c0eb36cDF0A28ae24D
+    console.log(`\tpriceSubmitter:      ${priceSubmitterContract.options.address}`)     // 0x1000000000000000000000000000000000000003   
+    console.log(`\tftsoRegistry:        ${ftsoRegistry.options.address}`)       // 0x6D222fb4544ba230d4b90BA1BfC0A01A94E6cB23
+    console.log(`\tvoterWhitelister:    ${voterWhitelister.options.address}`)   // 0xa76906EfBA6dFAe155FfC4c0eb36cDF0A28ae24D
 
     // Get indices for specific symbols
+    // const symbols = ["SGB", "XRP", "LTC", "XLM", "XDG", "ADA", "ALGO", "BCH", "DGB", "BTC"];
     // const symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
-    // Note: this can be replaced by a single call based on live ftsoRegistry contract
-    const ftsoSupportedIndices = (await ftsoRegistry.getSupportedIndices()).map(idx => (idx.toNumber()));
+    // Note: this can be replaced by a single call based on live contract
+
+    const ftsoSupportedIndices_ = await ftsoRegistry.methods.getSupportedIndices().call();
+    const ftsoSupportedIndices = ftsoSupportedIndices_.map(idx => (parseInt(idx)));
     const symbols = await Promise.all(
-        ftsoSupportedIndices.map(async idx => await ftsoRegistry.getFtsoSymbol(idx))
+        ftsoSupportedIndices.map(async idx => await ftsoRegistry.methods.getFtsoSymbol(idx).call())
     );
 
     // console.log(`Testing pricing`);
@@ -387,19 +351,13 @@ async function main() {
     // return;
 
     const ftsos = await Promise.all(
-        symbols.map(async sym => await MockFtso.at(await ftsoRegistry.getFtsoBySymbol(sym)))
-    ) as IFtsoInstance[];
+       
+        symbols.map(async sym =>  new web3.eth.Contract(JSON.parse(JSON.stringify(MockFtso)), await ftsoRegistry.methods.getFtsoBySymbol(sym).call()))
+    );
 
     // Get addresses of the various FTSO contracts
-    // const ftsoAddresses = await Promise.all(
-    //     symbols.map(async sym => await ftsoRegistry.getFtsoBySymbol(sym))
-    // );
-    const ftsoAddresses = await ftsoRegistry.getAllFtsos();
-    // Get number of decimals per asset
-    // Should be 5 always but good to confirm
-    // const decimals = await Promise.all(ftsoAddresses.map(async (addr, i) => (await (await MockFtso.at(addr)).ASSET_PRICE_USD_DECIMALS()).toNumber()));
     const decimals = await Promise.all(
-        ftsos.map(async ftso => (await ftso.ASSET_PRICE_USD_DECIMALS()).toNumber())
+        ftsos.map(async ftso => parseInt((await ftso.methods.ASSET_PRICE_USD_DECIMALS().call())))
     );
 
     // Get indices on which to submit
@@ -415,8 +373,8 @@ async function main() {
 
     // Get whitelists and counts
     const ftsoWhitelists = await Promise.all(
-        ftsoSupportedIndices.map(async idx => await voterWhitelister.getFtsoWhitelistedPriceProviders(idx))
-    );
+        ftsoSupportedIndices.map(async idx => await voterWhitelister.methods.getFtsoWhitelistedPriceProviders(idx).call())
+    ) as string[];
     const ftsoWhitelistsCounts = new Map( 
         symbols.map((c, i) => [c, ftsoWhitelists[i].length])
     );
@@ -433,14 +391,31 @@ async function main() {
         // since there is no vote power calculation, so everyone gets whitelisted.
         // In a real setting, this call can be quite expensive and can potentially fail
         // if the voter does not have enough power or provide enough gas for the transaction
-        const tx = await voterWhitelister.requestFullVoterWhitelisting(priceProviderAccount.address);
+        const tx = voterWhitelister.methods.requestFullVoterWhitelisting(priceProviderAccount.address).encodeABI();
+        var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
+        var gasPrice = await web3.eth.getGasPrice();
+        const transactionObject = {
+                chainId: 19,
+                nonce: web3.utils.toHex(transactionNonce),
+                gasLimit: web3.utils.toHex(2000000),
+                gasPrice: web3.utils.toHex(gasPrice*1.2),
+                value: 0,
+                to: voterWhitelister.options.address,
+                from: priceProviderAccount.address,
+                data: tx
+            };
+            
+        const signedTx = await web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
+         
+        console.log(`\tWhitelisting: ${Date()}`);
+        const result = await web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
         // Check the whitelist for any changes
-        const whitelist = await priceSubmitter.voterWhitelistBitmap(priceProviderAccount.address);
+        const whitelist = await priceSubmitterContract.methods.voterWhitelistBitmap(priceProviderAccount.address).call();
 
         // Get whitelists and counts after getting whitelisted
         const ftsoWhitelistsPost = await Promise.all(
-            ftsoSupportedIndices.map(async idx => await voterWhitelister.getFtsoWhitelistedPriceProviders(idx))
-        );
+            ftsoSupportedIndices.map(async idx => await voterWhitelister.methods.getFtsoWhitelistedPriceProviders(idx).call())
+        ) as string[];
         const ftsoWhitelistsCountsPost = new Map( 
             symbols.map((c, i) => [c, ftsoWhitelistsPost[i].length])
         );
@@ -461,10 +436,10 @@ async function main() {
         0: firstEpochStartTimeBN,
         1: submitPeriodBN,
         2: revealPeriodBN,
-    } = (await ftsos[0].getPriceEpochConfiguration());
+    } = (await ftsos[0].methods.getPriceEpochConfiguration().call());
 
     const [firstEpochStartTime, submitPeriod, revealPeriod] = 
-        [firstEpochStartTimeBN, submitPeriodBN, revealPeriodBN].map(x => x.toNumber());
+        [firstEpochStartTimeBN, submitPeriodBN, revealPeriodBN].map(x => parseInt(x));
 
     console.log(`FTSO parameters:`);
     console.log(`\tfirstEpochStartTime: ${new Date(firstEpochStartTime * 1000)}`);
@@ -475,13 +450,13 @@ async function main() {
     const checkPrices = true;
     if (checkPrices) {
         // Test: get prices for symbols
-        var initialEpoch = Math.floor(((await getTime()) - firstEpochStartTime) / submitPeriod);
+        var initialEpoch = Math.floor(((await getTime(web3)) - firstEpochStartTime) / submitPeriod);
         // var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
-        var pxsProd = await getPrices(initialEpoch, symbols, decimals, priceSource);    
-        var pxsCC   = await getPricesCryptoCompare(symbols);
-        var pxsCApi = await getPricesCoinApi(symbols);
-        var pxsCMC  = await getPricesCMC(symbols);
-        var pxsCG   = await getPricesCoinGecko(symbols);
+        var pxsProd = await getPrices(initialEpoch, symbols as string[], decimals, priceSource);    
+        var pxsCC   = await getPricesCryptoCompare(symbols as string[]);
+        var pxsCApi = await getPricesCoinApi(symbols as string[]);
+        var pxsCMC  = await getPricesCMC(symbols as string[]);
+        var pxsCG   = await getPricesCoinGecko(symbols as string[]);
         for (var i in ftsoSupportedIndices) {
             console.log(`${symbols[i]}:`);
             console.log(`\tCryptoCompare: ${pxsCC  [i]}`);
@@ -492,21 +467,6 @@ async function main() {
         }
         console.log(`Price Source: ${priceSource}`)
     }
-    
-    // Sync time to start on next full transaction id
-    // For a real setting, make sure that computer time is synced with a reliable time provider
-    // Take blockchain time
-    let now = await getTime();
-    var startingEpoch = Math.floor((now - firstEpochStartTime) / submitPeriod) + 1; // add 1 since we are waiting for next epoch
-    // const contractEpoch = (await ftsos[0].getCurrentEpochId()).toString()
-    // console.log(`Calculated Epoch: ${startingEpoch}`);
-    // console.log(`Contract Epoch:   ${contractEpoch}`);
-    let next = startingEpoch * submitPeriod + firstEpochStartTime;  // works since startingEpoch is actually next epoch here
-    let diff = Math.floor(next - now) + 1;
-    console.log(`Waiting for ${diff} seconds until first start`); 
-    await sleep(diff * 1000);
-    let currentEpoch = startingEpoch;
-    let nextEpoch = currentEpoch + 1;
 
     // We submitPriceHashes with the current EpochID, 
     // then once current Epoch is passed, within 90 seconds, we call revealPrices with EpochID 
@@ -529,10 +489,15 @@ async function main() {
     // var submitBufferIncrease = 1.1;     // Increase factor (multiple of std) for when we miss a submission window
     var submitBufferBase = 3;           // Base buffer rate.
     var submitBufferBurnIn = 2;        // Number of periods before adjusting submitBuffer
+    let now = await getTime(web3);
+    let currentEpoch = 0;
+    let nextEpoch = currentEpoch;
+    let diff = 0;
     while (true) {
 
+
         // Get time and current epoch params
-        now = await getTime();
+        now = await getTime(web3);
         // now = (new Date()).getTime() / 1000; // susceptible to system clock drift
         const currentEpochCheck = (Math.floor((now - firstEpochStartTime) / submitPeriod)); // don't add 1 here like above
         // check for drift
@@ -541,7 +506,7 @@ async function main() {
             nextEpoch = currentEpoch + 1;
         }
         const start = currentEpoch * submitPeriod + firstEpochStartTime;
-        next = nextEpoch * submitPeriod + firstEpochStartTime;
+        let next = nextEpoch * submitPeriod + firstEpochStartTime;
         const submitWaitTime = Math.max(Math.floor(next - now) - submitBuffer, 0);  // don't wait negative time
 
         console.log("\n\nEpoch ", currentEpoch); 
@@ -559,15 +524,15 @@ async function main() {
         console.log(`Start submit for epoch ${currentEpoch}`);
         console.log(`\tStart getting prices:    ${Date()}`); 
         // Prepare prices and randoms
-        const randoms = symbols.map(sym => getRandom(currentEpoch, sym)); 
+        const randoms = symbols.map(sym => getRandom(currentEpoch, sym as string)); 
 
         // const prices = symbols.map(sym => getPrice(currentEpoch, sym)); // Just a mock here, real price should not be random
-        const prices = await getPrices(currentEpoch, symbols, decimals, priceSource);
+        const prices = await getPrices(currentEpoch, symbols as string[], decimals, priceSource);
 
         console.log(`\tFinished getting prices: ${Date()}`); 
 
         const hashes = prices.map((p, i) => 
-            submitPriceHash(p, randoms[i], priceProviderAccount.address)
+            submitPriceHash(p, randoms[i], priceProviderAccount.address, web3)
         );
         console.log(`\tFinished getting hashes: ${Date()}`); 
         console.log("Prices:  ", prices);
@@ -577,6 +542,7 @@ async function main() {
         var submittedHash: boolean;
         
         try {
+
             const exchangeEncodeABI = priceSubmitterContract.methods.submitPriceHashes(currentEpoch,ftsoIndices, hashes).encodeABI();
             var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
             var gasPrice = await web3.eth.getGasPrice();
@@ -590,25 +556,26 @@ async function main() {
                 from: priceProviderAccount.address,
                 data: exchangeEncodeABI
             };
-            
-            //console.log(util.inspect(transactionObject, false, null, true /* enable colors */))
-            let transaction = new EthTx(transactionObject);
-            transaction.sign(privateKey); // sign a transaction
-            const serializedEthTx = transaction.serialize().toString("hex"); // serialize the transaction
-            console.log(`\tSubmitting price hashes: ${Date()}`)
-            if (!isTestnet) {
-                web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_submit_mute); 
-                console.log(`\tFirst Provider finished submission:     ${Date()}`); 
-            }
-            await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('transactionHash',(hash) => {
-                console.log('\tsubmitPriceHashes txHash:', hash)
-            })
-            .on('receipt',(receipt) => {
-            })
-            .on('error', console.error);                
 
-            console.log(`\tSecond Provider finished submission:     ${Date()}`); 
-            submittedHash = true;
+            const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
+                signPromise.then((signedTx) => {  
+                    // raw transaction string may be available in .raw or 
+                    // .rawTransaction depending on which signTransaction
+                    // function was called
+                    console.log(`\tSubmitting price hashes:       ${Date()}`)
+                    const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
+                    console.log(`\tFirst Provider timestamp:      ${Date()}`); 
+                    const result : typeof tx = [];
+                    result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+                    console.log(`\tSecond Provider timestamp:     ${Date()}`); 
+                    tx.once('transactionHash',  async hash => {
+                        console.log("SubmitPriceHash txHash: ", hash);
+                    })
+                    Promise.all(result).then((values) => {
+                    })
+                });
+            
+                submittedHash = true;
         } catch (error) {
             // TODO(MCZ): add notifications
             submittedHash = false;
@@ -634,13 +601,20 @@ async function main() {
 
             // Send error message
             // send mail with defined transport object
+            try{
             let info = await transporter.sendMail({
-                from: `"FTSO Monitor" <${process.env.GMAIL_USER}@gmail.com>`,                    // sender address
-                to: `${process.env.ERROR_MAIL_LIST}`,                                            // list of receivers
-                subject: `FTSO error for ${priceProviderAccount.address}`,                       // Subject line
-                text: `Price hash submission error for ${priceProviderAccount.address}`,         // plain text body
-                html: `Price hash submission error for <b>${priceProviderAccount.address}</b>`,  // html body
+                from: '"FTSO Monitor" <cv40067@gmail.com>',       // sender address
+                to: "cv40067@gmail.com, mczochowski@gmail.com",                // list of receivers
+                subject: `FTSO error for ${priceProviderAccount.address}`,                           // Subject line
+                text: `Price hash submission error for ${priceProviderAccount.address}`,        // plain text body
+                html: `Price hash submission error for <b>${priceProviderAccount.address}</b>`, // html body
             });
+        }
+        catch (error)
+        {
+            console.log(`\tError Sending mail:     ${Date()}`);
+            console.log(error);
+        }
         }
         var endSubmitTime: Date = new Date();
         var submitTime = (endSubmitTime.getTime() - startSubmitTime.getTime()) / 1000;   // in seconds
@@ -667,7 +641,7 @@ async function main() {
         console.log(`   Last: ${submitTime}`);
 
         // advance to start of reveal period
-        now = await getTime();
+        now = await getTime(web3);
         next = nextEpoch * submitPeriod + firstEpochStartTime;
         diff = Math.max(Math.floor(next - now), 0);     // don't sleep for negative time
         console.log(`\nWaiting for ${diff} seconds until reveal`); 
@@ -682,6 +656,7 @@ async function main() {
         if (submittedHash) {
             console.log(`\tSubmitting price reveal: ${Date()}`)
             try {
+                
                 const exchangeEncodeABI = priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).encodeABI();
                 var gasLimit = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: priceProviderAccount.address});
                 var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
@@ -697,21 +672,22 @@ async function main() {
                     data: exchangeEncodeABI
                 };
                 
-                let transaction = new EthTx(transactionObject);
-                transaction.sign(privateKey); // sign a transaction
-                const serializedEthTx = transaction.serialize().toString("hex"); // serialize the transaction
-                if (!isTestnet) {
-                    web3_backup.eth.sendSignedTransaction(`0x${serializedEthTx}`, err_cb_reveal_mute); 
-                    console.log(`\tFirst Provider finished reveal:     ${Date()}`); 
-                }
-                await web3.eth.sendSignedTransaction(`0x${serializedEthTx}`).on('transactionHash',(hash) => {
-                    console.log('\trevealPrices txHash:', hash)
-                })
-                .on('receipt',(receipt) => {
-                })
-                .on('error', console.error);        
-                console.log(`\tSecond Provider finished reveal:     ${Date()}`);         
-
+                const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
+                signPromise.then((signedTx) => {  
+                    // raw transaction string may be available in .raw or 
+                    // .rawTransaction depending on which signTransaction
+                    // function was called
+                    
+                    const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
+                    const result : typeof tx = [];
+                    result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+                    tx.once('transactionHash',  async hash => {
+                        console.log("txHash: ", hash);
+                    })
+                    Promise.all(result).then((values) => {
+                    })
+                });
+                
                 console.log(`\tFinished reveal:         ${Date()}`); 
                 console.log("Revealed prices for epoch ", currentEpoch);
             } catch (error) {
@@ -719,7 +695,7 @@ async function main() {
                 console.log(error);
                 errorCount += 1;
 
-                // Send error message
+            try {  // Send error message
                 let info = await transporter.sendMail({
                     from: `"FTSO Monitor" <${process.env.GMAIL_USER}@gmail.com>`,                      // sender address
                     to: `${process.env.ERROR_MAIL_LIST}`,                                              // list of receivers
@@ -727,6 +703,12 @@ async function main() {
                     text: `Price reveal submission error for ${priceProviderAccount.address}`,         // plain text body
                     html: `Price reveal submission error for <b>${priceProviderAccount.address}</b>`,  // html body
                 });
+            }
+            catch (error)
+            {
+                console.log(`\tError Sending mail:     ${Date()}`);
+                console.log(error);
+            }
             }
         }
         
@@ -736,7 +718,7 @@ async function main() {
         nextEpoch = nextEpoch + 1
 
         // get remaining balance
-        sgbBalance = fromWei((await ethers.provider.getBalance(priceProviderAccount.address)).toString());
+        sgbBalance = fromWei((await web3.eth.getBalance(priceProviderAccount.address)).toString());
         console.log(`SGB remaining: ${sgbBalance}`);
         console.log(`Total errors now ${errorCount}`);
     }
