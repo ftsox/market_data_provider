@@ -2,9 +2,9 @@ version: "3"
 
 services:
   ftso:
-    image: bbftso/ftsojs:latest
+    image: bbftso/ftsojs:lean
     volumes:
-     - ./logs:/app/logs
+     - ./logs:/usr/app/logs
     environment:
      - CC_API_KEY=
      - COINAPI_KEY=
@@ -15,4 +15,4 @@ services:
      - GMAIL_USER=
      - GMAIL_PASSWORD=
      - ERROR_MAIL_LIST=
-    command: /bin/bash -c /app/ftso_start.sh
+    command: /bin/bash -c ./ftso_start.sh

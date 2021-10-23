@@ -27,24 +27,19 @@ Then setup an `.env` file following `.env example` with the following:
 and call `source .env` in your terminal.
 - Email list for error messages
 
-To run on local hardhat testnet, open up two terminal windows. In the first, run
+To run
 ```
-yarn hardhat node
+cd src_prod
+npm install
+npm run build
+node ./dist/prod-price-provider.js
 ```
-In the second window, run
-```
-yarn hardhat compile 
-yarn hardhat run ./deployment/scripts/deploy-mock-price-submitter.ts --network localhost
-env CHAIN_CONFIG=scdev yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network localhostv
-```
-or to run on mainnet:
-```
-yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network songbird
-```
+
+Ensure .env is properly placed in the `src_prod` folder.
 
 To get logging of run output, use:
 ```
-yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network songbird 2>&1 | tee -a run.log
+node ./dist/prod-price-provider.js 2>&1 | tee -a run.log
 tail -f run.log
 ```
 
@@ -60,14 +55,12 @@ See `scratch/console_commands.js` for some examples
 Build the image in project root directory: `docker build .` then push to docker hub: `docker push bbftso/ftsojs`. Note that the images need to be tagged before pushing: `docker tag image_hash bbftso/ftsojs`:
 
 ```
+cd src_prod
 docker build .
 docker image ls
 docker tag [image_hash] bbftso/ftsojs:[TAG]
 docker push bbftso/ftsojs:[TAG]
 ```
-
-Note that the docker image is optimized to be as compressed as possible and therefore, certain compromises were made in the process of building the image:
-  * The ABI files exist in the `docker_prod` folder 
 
 ###Deployment
 Make sure docker-compose and docker are installed on the instance.
