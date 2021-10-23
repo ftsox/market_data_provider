@@ -271,6 +271,23 @@ let transporter = nodemailer.createTransport({
 
 // TODO(MCZ): add output logging for better error diagnosis
 async function main() {
+
+    const express = require('express');
+    const app = express();
+
+    app.get('/', (req, res) => {
+    console.log('PING.');
+
+    const target = process.env.TARGET || 'Running';
+    res.send(`FTSO: ${target}!`);
+    });
+
+    const port = process.env.PORT || 8080;
+    app.listen(port, () => {
+    console.log('FTSO Listening', port);
+    });
+
+
     const web3 = new Web3(
         new Web3.providers.HttpProvider(URL0)
     );

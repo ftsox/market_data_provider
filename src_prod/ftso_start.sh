@@ -1,5 +1,5 @@
 #!/bin/bash
-DIR="./logs"
+DIR="/var/log"
 FILE="run.log"
 if [ ! -d "$DIR" ]; then
     mkdir $DIR
