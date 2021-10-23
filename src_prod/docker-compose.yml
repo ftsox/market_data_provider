@@ -4,7 +4,7 @@ services:
   ftso:
     image: bbftso/ftsojs:lean
     volumes:
-     - ./logs:/usr/app/logs
+     - ./logs:/var/log
     environment:
      - CC_API_KEY=
      - COINAPI_KEY=
