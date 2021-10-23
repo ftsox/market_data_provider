@@ -12,17 +12,17 @@ else
     fi
 fi
 echo $(date), "Starting FTSO"
-yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network songbird >> $DIR/$FILE 2>&1 & echo FTSO started with PID $! 
+node ./dist/prod-price-provider.js  >> $DIR/$FILE 2>&1 & echo FTSO started with PID $! 
 
 while :
 do
 sleep 1m
-if ps -aux | grep "require ts-node/register" | grep prod-price-provider >/dev/null
+if ps -aux | grep "prod-price-provider" | grep prod-price-provider >/dev/null
 then 
     echo $(date), "FTSO is Healthy" >> $DIR/$FILE
 else
     echo $(date), "FTSO is dead - Restarting" >> $DIR/$FILE
-    yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network songbird >> $DIR/$FILE 2>&1 & echo FTSO started with PID $! 
+    node ./dist/prod-price-provider.js  >> $DIR/$FILE 2>&1 & echo FTSO started with PID $! 
 fi
 
 
