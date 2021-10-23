@@ -35,6 +35,14 @@ npm run build
 node ./dist/prod-price-provider.js
 ```
 
+Or with yarn:
+```
+cd src_prod
+yarn
+yarn build
+node ./dist/prod-price-provider.js
+```
+
 Ensure .env is properly placed in the `src_prod` folder.
 
 To get logging of run output, use:

@@ -7,3 +7,4 @@ nul
 *.ignore
 ignore
 run.log
+src_prod/dist

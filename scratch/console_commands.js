@@ -359,6 +359,97 @@ symbols.map((sym, i) => response.data.data[sym].quote[baseCurrency]['price'])
 
 
 
+// CCXT
+// https://github.com/ccxt/ccxt
+// https://ccxt.readthedocs.io/en/latest/manual.html#price-tickers
+const ccxt = require ('ccxt');
+
+// list of exchanges: https://ccxt.readthedocs.io/en/latest/manual.html#exchanges
+baseCurrency = 'USD';
+symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
+
+let kraken    = new ccxt.kraken();
+let binance   = new ccxt.binance();
+let coinbase  = new ccxt.coinbase();
+let ftx       = new ccxt.ftx();
+// let bitfinex  = new ccxt.bitfinex ({ verbose: true })
+// let huobipro  = new ccxt.huobipro ()
+// let okcoinusd = new ccxt.okcoin ({
+//     apiKey: 'YOUR_PUBLIC_API_KEY',
+//     secret: 'YOUR_SECRET_PRIVATE_KEY',
+// })
+
+sym = symbols[0];
+ticker = [sym, baseCurrency].join('/');
+
+// Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
+// Use those for conversion, flag if it's a delta of more than 1%
+baseCurrencyAlt = 'USDT';
+baseCurrencyAltToBaseCurrencyTicker = `${baseCurrencyAlt}/${baseCurrency}`;
+
+tickersBase = symbols.map((sym) => `${sym}/${baseCurrency}`);
+tickersBase.push(baseCurrencyAltToBaseCurrencyTicker);
+tickersBaseToSymbolsMap = new Map(symbols.map((sym, i) => [sym, tickersBase[i]])); // doesn't include USD/USDT
+
+// fetchTickers (batch): https://ccxt.readthedocs.io/en/latest/manual.html#multiple-tickers-for-all-or-many-symbols
+// not supported by: Coinbase, ...
+pxsRawEx = await ftx.fetchTickers(tickersBase);
+tickersRet = Object.keys(pxsRawEx); // will typically be missing a bunch of keys
+pxsEx = new Map(tickersRet.map((ticker) => [ticker, (pxsRawEx[ticker].bid + pxsRawEx[ticker].ask)/2] ));
+pxsExList = tickersBase.map((ticker) => pxsEx.get(ticker))    // will have lots of undefineds
+
+// extract USDT/USD price
+baseCurrencyAltPx = pxsEx.get(baseCurrencyAltToBaseCurrencyTicker)
+
+// pxsRawExList = symbols.map((sym) => )
+
+
+
+
+
+// x = await binance.fetchTicker ('BTC/USD')
+// x = await coinbase.fetchTicker(baseCurrencyAltToBaseCurrencyTicker);
+// y = await kraken.fetchTicker  (baseCurrencyAltToBaseCurrencyTicker);
+// z = await ftx.fetchTicker     (baseCurrencyAltToBaseCurrencyTicker);
+// USD exchanges
+
+// USDT exchanges
+
+// const exchangeId = 'binance'
+//     , exchangeClass = ccxt[exchangeId]
+//     , exchange = new exchangeClass ({
+//         'apiKey': 'YOUR_API_KEY',
+//         'secret': 'YOUR_SECRET',
+//     })
+
+// console.log (kraken.id,    await kraken.loadMarkets ())
+// console.log (bitfinex.id,  await bitfinex.loadMarkets  ())
+// console.log (huobipro.id,  await huobipro.loadMarkets ())
+
+// console.log (kraken.id,    await kraken.fetchOrderBook (kraken.symbols[0]))
+// console.log (bitfinex.id,  await bitfinex.fetchTicker ('BTC/USD'))
+// console.log (huobipro.id,  await huobipro.fetchTrades ('ETH/USDT'))
+
+// console.log (okcoinusd.id, await okcoinusd.fetchBalance ())
+
+// // sell 1 BTC/USD for market price, sell a bitcoin for dollars immediately
+// console.log (okcoinusd.id, await okcoinusd.createMarketSellOrder ('BTC/USD', 1))
+
+// // buy 1 BTC/USD for $2500, you pay $2500 and receive ฿1 when the order is closed
+// console.log (okcoinusd.id, await okcoinusd.createLimitBuyOrder ('BTC/USD', 1, 2500.00))
+
+// // pass/redefine custom exchange-specific order params: type, amount, price or whatever
+// // use a custom order type
+// bitfinex.createLimitSellOrder ('BTC/USD', 1, 10, { 'type': 'trailing-stop' })
+
+
+
+
+
+
+
+
+
 
 // Epoch periods
 
