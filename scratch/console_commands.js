@@ -365,13 +365,16 @@ symbols.map((sym, i) => response.data.data[sym].quote[baseCurrency]['price'])
 const ccxt = require ('ccxt');
 
 // list of exchanges: https://ccxt.readthedocs.io/en/latest/manual.html#exchanges
-baseCurrency = 'USD';
+baseCurrency = 'USDT';
 symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
 
-let kraken    = new ccxt.kraken();
-let binance   = new ccxt.binance();
-let coinbase  = new ccxt.coinbase();
-let ftx       = new ccxt.ftx();
+exchanges = ['binance','ftx','huobi','kucoin','gateio'];
+fetchTargets = [];
+exchanges.forEach(element => {
+    let single =  eval(`new ccxt.${element}`);
+    fetchTargets.push(single);
+});
+
 // let bitfinex  = new ccxt.bitfinex ({ verbose: true })
 // let huobipro  = new ccxt.huobipro ()
 // let okcoinusd = new ccxt.okcoin ({
@@ -390,14 +393,22 @@ baseCurrencyAltToBaseCurrencyTicker = `${baseCurrencyAlt}/${baseCurrency}`;
 tickersBase = symbols.map((sym) => `${sym}/${baseCurrency}`);
 tickersBase.push(baseCurrencyAltToBaseCurrencyTicker);
 tickersBaseToSymbolsMap = new Map(symbols.map((sym, i) => [sym, tickersBase[i]])); // doesn't include USD/USDT
+var pxsEx = {};
+const tasks = [];
+for (let i = 0; i < fetchTargets.length; i++) {
+    tasks.push(fetchTargets[i].fetchTickers(tickersBase));
+  }
 
-// fetchTickers (batch): https://ccxt.readthedocs.io/en/latest/manual.html#multiple-tickers-for-all-or-many-symbols
-// not supported by: Coinbase, ...
-pxsRawEx = await ftx.fetchTickers(tickersBase);
-tickersRet = Object.keys(pxsRawEx); // will typically be missing a bunch of keys
-pxsEx = new Map(tickersRet.map((ticker) => [ticker, (pxsRawEx[ticker].bid + pxsRawEx[ticker].ask)/2] ));
-pxsExList = tickersBase.map((ticker) => pxsEx.get(ticker))    // will have lots of undefineds
-
+const allRawData = Promise.all(tasks);
+var tickersRet = {};
+allRawData.then(pxsRawEx => {
+    tickersRet = Object.keys(pxsRawEx); // will typically be missing a bunch of keys
+    console.log(tickersRet);
+    //tickersRet.forEach(tickerSymbol => {pxsEx[tickerSymbol] = pxsEx[tickerSymbol] || []; pxsEx[tickerSymbol].push((pxsRawEx[ticker].bid + pxsRawEx[ticker].ask)/2) });
+});
+ 
+ 
+  //pxsExList = tickersBase.map((ticker) => pxsEx.get(ticker))    // will have lots of undefineds
 // extract USDT/USD price
 baseCurrencyAltPx = pxsEx.get(baseCurrencyAltToBaseCurrencyTicker)
 

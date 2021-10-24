@@ -1,6 +1,7 @@
 /*
     Imports
 */
+const ccxt = require ('ccxt');
 require('dotenv').config();
 let sleep = require('util').promisify(setTimeout);
 const axios = require('axios');
@@ -32,6 +33,7 @@ if (isTestnet) {
     privKey = process.env.FTSO_PRIVATE_KEY ;
 }
 
+let exchanges = ['binance','ftx','huobi','kucoin','gateio'];
 const web3 = new Web3(
     new Web3.providers.HttpProvider(URL0)
 );
@@ -62,197 +64,84 @@ export function submitPriceHash(price: number, random: number, address: string, 
     return ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode([ "uint256", "uint256", "address" ], [price.toString(), random.toString(), address]))
 }
 
+function calculateAverage(array) {
+    var total = 0;
+    var count = 0;
+
+    array.forEach(function(item, index) {
+        total += item;
+        count++;
+    });
+
+    return total / count;
+}
+
 // Decimals: number of decimal places in Asset USD price
 // note that the actual USD price is the integer value divided by 10^Decimals
-var baseCurrency = 'USD';
+var baseCurrency = 'USDT';
 var baseCurrencyLower = baseCurrency.toLowerCase();
 var priceSource: string = process.env.PRICE_SOURCE || '';
 // var pricesLast = [];
 var pricesLast = {};    // Dictionary of arrays indexed by assets (in case we are ever calling for different sets of assets)
 // TODO: have this and child functions return a validPrice flag (boolean)
-async function getPrices(epochId: number, assets: string[], decimals: number[], priceSource: string): Promise<number[]>{
+async function getPrices(assets: string[], decimals: number[]): Promise<number[]>{
     var assetsUid = assets.join(',');   // key on asset list as unique identifier
-    var nAssets = assets.length;
-    if (nAssets == 0) {
-        return [];
-    }
-    // if we haven't initialized last price, start it off with -1s
-    // if (pricesLast[assetsUid].length == 0 && nAssets > 0) {
-    if (!(assetsUid in pricesLast)) {
-        pricesLast[assetsUid] = new Array(nAssets).fill(-1);
-    }
-    // Get prices
+    let   fetchTargets: any[] =  [];
+    exchanges.forEach(element => {
+    let single =  eval(`new ccxt.${element}`);
+    fetchTargets.push(single);
+    });
+
+    let sym = assets[0];
+    let ticker = [sym, baseCurrency].join('/');
+
+    // Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
+    // Use those for conversion, flag if it's a delta of more than 1%
+    let baseCurrencyAlt = 'USDT';
+    let baseCurrencyAltToBaseCurrencyTicker = `${baseCurrencyAlt}/${baseCurrency}`;
+
+    let tickersBase = assets.map((sym) => `${sym}/${baseCurrency}`);
+    tickersBase.push(baseCurrencyAltToBaseCurrencyTicker);
+    let tickersBaseToSymbolsMap = new Map(assets.map((sym, i) => [sym, tickersBase[i]])); // doesn't include USD/USDT
+    //console.log(tickersBaseToSymbolsMap);
+    var pxsEx = {};
     try {
-        //// Could get multiple prices simultaneously using await Promise.all(...)
-        //// Ref: https://dev.to/raviojha/javascript-making-multiple-api-calls-the-right-way-2b29
-        let prices;
-        switch (priceSource) {
-            case 'CRYPTOCOMPARE':
-                prices = await getPricesCryptoCompare(assets);
-                break;
-            case 'COINAPI':
-                prices = await getPricesCoinApi(assets);
-                break;
-            case 'CMC':
-                prices = await getPricesCMC(assets);
-                break;
-            case 'COINGECKO':
-                prices = await getPricesCoinGecko(assets);  // no API key needed
-                break;
-            case 'ERROR':
-                // Error case for testing
-                prices = new Array(nAssets).fill(-1);
-                break;
-            default:
-                prices = await getPricesCoinGecko(assets);  // no API key needed
-                break;
-        }
-        // var validPrice = prices.reduce((partial_sum, a) => partial_sum + a,0) > 0;
-        var validPrice = prices[0] > 0;
-        var pricesAdj = prices.map((p,i) => Math.round(p * 10**decimals[i]))
-        // Check if price source function returned array of -1, signalling an error
-        if (!validPrice) {
-            // If invalid, return last valid pricing
-            pricesAdj = pricesLast[assetsUid];
-        } else {
-            // store last prices
-            pricesLast[assetsUid] = pricesAdj;
-        }
-        return pricesAdj;
-    } catch(error){
+    const tasks: any[] = [];
+    for (let i = 0; i < fetchTargets.length; i++) {
+        tasks.push(fetchTargets[i].fetchTickers(tickersBase));
+    }
+
+    const allRawData = await Promise.all(tasks);
+    var tickersRet: any[] = [];
+    for (let i = 0; i<allRawData.length; i++){
+        
+        //console.log(allRawData[i]);
+        tickersRet = Object.keys(allRawData[i]); // will typically be missing a bunch of keys
+        //console.log("tickerRet:", tickersRet);
+        tickersRet.forEach(tickerSymbol => {pxsEx[tickerSymbol] = pxsEx[tickerSymbol] || []; 
+        pxsEx[tickerSymbol].push((allRawData[i][tickerSymbol].bid + allRawData[i][tickerSymbol].ask)/2) });  
+    };
+   // console.log("pxsEx: ", pxsEx);
+    var finalizedPriceMap = {};
+    Object.entries(pxsEx).map(([key, value]) => finalizedPriceMap[key] =  calculateAverage(value));
+    var priceProd = assets.map((sym,i) => Math.round(finalizedPriceMap[`${sym}/${baseCurrency}`]  * 10**decimals[i])); 
+    var validPrice = priceProd[0] > 0;
+     // Check if price source function returned array of -1, signalling an error
+     if (!validPrice) {
+        // If invalid, return last valid pricing
+        validPrice = pricesLast[assetsUid];
+    } else {
+        // store last prices
+        pricesLast[assetsUid] = priceProd;
+    }
+    return priceProd;
+    }
+    catch(error){
         console.log(`Get prices error:\n  ${error}`);
         // return assets.map((sym, i) => -1);   // Return 0's, TOOD: update - maybe return last prices?
         // If invalid, return last valid pricing
         return pricesLast[assetsUid];
     }
-}
-
-// CryptoCompare price API
-// **Issue**: poor decimal precision
-async function getPricesCryptoCompare(assets: string[]): Promise<number[]>{
-    // Get prices
-    var ccApiKey = process.env.CC_API_KEY;
-    var ccApiUrl = `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${assets.join()}&tsyms=${baseCurrency}&api_key=${ccApiKey}`;
-    try {
-        var pricesRaw = (await axios.get(ccApiUrl)).data;
-        var prices = assets.map(sym => pricesRaw[sym][baseCurrency])
-        return prices;
-    } catch(error){
-        console.log(`CryptoCompare API error:\n  ${error}`);
-        return assets.map((sym, i) => -1);
-    }
-}
-
-// CoinAPI price API
-// https://docs.coinapi.io/#md-docs
-// List of asset symbols: https://www.coinapi.io/integration
-// Detail on how market price is calculated: https://support.coinapi.io/hc/en-us/articles/360018953291-How-are-exchange-rates-calculated-
-// TODO: need to switch to websockets for live data per https://docs.coinapi.io/#md-rest-api
-// **issue** updates on a > 2 min frequency from empirical testing
-async function getPricesCoinApi(assets: string[]): Promise<number[]>{
-    // Get prices
-    const coinApiKey = process.env.COINAPI_KEY;
-    const coinApiUrl = `https://rest.coinapi.io/v1/exchangerate/${baseCurrency}?filter_asset_id=${assets.join(";")};`;    // need trailing semicolon, invert doesn't work
-    const requestOptions = {
-        method: 'GET',
-        url: coinApiUrl,
-        headers: {
-            'X-CoinAPI-Key': coinApiKey
-        }
-    };
-    try {
-        var response = await axios.request(requestOptions);
-        var bulkRates = response.data.rates;     // returns in alphabetical order
-        // Can do this once at beginning outside of this function since this won't change unless another asset is added halfway, in which case we need to restart anyway...
-        var idxMap: Map<string, number> = new Map( bulkRates.map((rateObj, i) => [rateObj.asset_id_quote, i]));
-        // confirm lengths to ensure we got all symbols
-        if(bulkRates.length != assets.length)
-        {
-            throw 'CoinApi is TRASH!';
-        }
-        // need to invert since invert flag doesn't work in API if we are also filtering by asset
-        var prices = assets.map( (sym, i) => 1 / bulkRates[idxMap.get(sym) ?? -1].rate );        // janky hack to get typescript to not complain about return type
-        return prices;
-    } catch(error){
-        console.log(`CoinAPI API error:\n  ${error}`);
-        return assets.map((sym, i) => -1);
-    }    
-}
-
-// CoinMarketCap price API
-// https://coinmarketcap.com/api/documentation/v1/#operation/getV1CryptocurrencyQuotesLatest
-// Has a 60 second cache per the above, so not a very good option
-async function getPricesCMC(assets: string[]): Promise<number[]>{
-    // Get prices
-    const cmcKey = process.env.CMC_PRO_API_KEY;
-    const cmcUrl = `https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest`;
-    const requestOptions = {
-        method: 'GET',
-        url: cmcUrl,
-        params: {
-            'symbol': `${assets.join(",")}`,
-            'convert': `${baseCurrency}`
-        },
-        headers: {
-            'X-CMC_PRO_API_KEY': cmcKey
-        },
-    };
-    try {
-        var response = await axios.request(requestOptions);
-        var prices = assets.map((sym, i) => response.data.data[sym].quote[baseCurrency]['price']);
-        return prices;
-    } catch(error){
-        console.log(`CoinMarketCap API error:\n  ${error}`);
-        return assets.map((sym, i) => -1);
-    }    
-}
-
-
-// CoinGecko price API
-// JS docs: https://github.com/miscavage/CoinGecko-API
-// API docs: https://www.coingecko.com/en/api/documentation
-// **Issue**: poor decimal precision
-// Also has a very bad update frequency of 1 to 10 minutes per https://www.coingecko.com/en/faq
-// NOTE: Needs to be updated per coin list: https://docs.google.com/spreadsheets/d/1wTTuxXt8n9q7C4NDXqQpI3wpKu1_5bGVmP9Xz0XGSyU/edit
-const cgSymbolMapping = {
-    'XRP': 'ripple',
-    'LTC': 'litecoin',
-    'XLM': 'stellar',
-    'DOGE': 'dogecoin',
-    'ADA': 'cardano',
-    'ALGO': 'algorand',
-    'BCH': 'bitcoin-cash',
-    'DGB': 'digibyte',
-    'BTC': 'bitcoin',
-    'ETH': 'ethereum',
-    'FIL': 'filecoin',
-};
-const cgNames = Object.values(cgSymbolMapping)
-async function getPricesCoinGecko(assets: string[]): Promise<number[]>{
-    const coinGeckoUrl = `https://api.coingecko.com/api/v3/simple/price`;
-    const requestOptions = {
-        method: 'GET',
-        url: coinGeckoUrl,
-        params: {
-            'ids': `${cgNames.join(",")}`,
-            'vs_currencies': baseCurrencyLower,
-        },
-        headers: {},
-    };
-
-    try {
-        //// Option 1: CoinGecko js client
-        // const CoinGecko = require('coingecko-api');
-        // const CoinGeckoClient = new CoinGecko();
-        // var response = await CoinGeckoClient.simple.price({ ids: cgNames, vs_currencies: [baseCurrencyLower], });
-        //// Option 2: CoinGecko API
-        var response = await axios.request(requestOptions);
-        var prices = assets.map(sym => response.data[cgSymbolMapping[sym]][baseCurrencyLower]);     // assumes that cgSymbolMapping is complete
-        return prices;
-    } catch(error){
-        console.log(`CoinGecko API error:\n  ${error}`);
-        return assets.map((sym, i) => -1);
-    }    
 }
 
 // Random generation for hashing of prices to submit in commit phase
@@ -347,34 +236,6 @@ async function main() {
         ftsoSupportedIndices.map(async idx => await ftsoRegistry.methods.getFtsoSymbol(idx).call())
     );
 
-    // console.log(`Testing pricing`);
-    // console.log(`Start: pricesLast\n${JSON.stringify(pricesLast)}`);
-    // // priceSource='CRYPTOCOMPARE'
-    // priceSource='COINAPI'
-
-    // console.log(`Getting prices from ${priceSource}`);
-    // var pxsTest = await getPrices(1, symbols, new Array(symbols.length).fill(5), priceSource);
-    // console.log(`\t${pxsTest}`);
-    // console.log(`After: pricesLast\n${JSON.stringify(pricesLast)}`);
-
-    // console.log(`Getting prices from ERROR source`);
-    // var pxsTest = await getPrices(1, symbols, new Array(symbols.length).fill(5), 'ERROR');
-    // console.log(`\t${pxsTest}`);
-    // console.log(`After: pricesLast\n${JSON.stringify(pricesLast)}`);
-    
-    // await sleep(5 * 1000);
-    // console.log(`Getting prices from ${priceSource}`);
-    // var pxsTest = await getPrices(1, symbols, new Array(symbols.length).fill(5), priceSource);
-    // console.log(`\t${pxsTest}`);
-    // console.log(`After: pricesLast\n${JSON.stringify(pricesLast)}`);    
-    // // var pxsProd = await getPrices(initialEpoch, symbols, decimals, priceSource);
-
-    // // test update frequency
-    // for (let i = 0; i < 36; i++){
-    //     var pxsTest = await getPrices(1, symbols, new Array(symbols.length).fill(5), priceSource);
-    //     console.log(`Loop ${i}:\t${pxsTest}`);
-    // }
-    // return;
 
     const ftsos = await Promise.all(
        
@@ -476,22 +337,8 @@ async function main() {
     const checkPrices = true;
     if (checkPrices) {
         // Test: get prices for symbols
-        var initialEpoch = Math.floor(((await getTime(web3)) - firstEpochStartTime) / submitPeriod);
-        // var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
-        var pxsProd = await getPrices(initialEpoch, symbols as string[], decimals, priceSource);    
-        var pxsCC   = await getPricesCryptoCompare(symbols as string[]);
-        var pxsCApi = await getPricesCoinApi(symbols as string[]);
-        var pxsCMC  = await getPricesCMC(symbols as string[]);
-        var pxsCG   = await getPricesCoinGecko(symbols as string[]);
-        for (var i in ftsoSupportedIndices) {
-            console.log(`${symbols[i]}:`);
-            console.log(`\tCryptoCompare: ${pxsCC  [i]}`);
-            console.log(`\tCoinAPI:       ${pxsCApi[i]}`);
-            console.log(`\tCoinMarketCap: ${pxsCMC [i]}`);
-            console.log(`\tCoinGecko:     ${pxsCG  [i]}`);
-            console.log(`\tProduction Px: ${pxsProd[i]}`);
-        }
-        console.log(`Price Source: ${priceSource}`)
+        var pxsProd = await getPrices(symbols as string[], decimals);    
+        console.log("Prices: ", pxsProd);
     }
 
     // We submitPriceHashes with the current EpochID, 
@@ -508,7 +355,7 @@ async function main() {
     // Need a bit of buffer to let the other function calls return
     // Should be based on when others submit their prices to make sure we're as close as possible to them
     // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
-    var submitBuffer = 15;              // Initial buffer for how many seconds before end of epoch we should start submission
+    var submitBuffer = 22;              // Initial buffer for how many seconds before end of epoch we should start submission
     var submitTimes: Number[] = [];     // Record recent times to measure how much buffer we need
     var submitBufferStd = 3;            // How many stds (normal)
     // var submitBufferDecay = 0.999;      // Decay factor on each loop
@@ -553,7 +400,7 @@ async function main() {
         const randoms = symbols.map(sym => getRandom(currentEpoch, sym as string)); 
 
         // const prices = symbols.map(sym => getPrice(currentEpoch, sym)); // Just a mock here, real price should not be random
-        const prices = await getPrices(currentEpoch, symbols as string[], decimals, priceSource);
+        const prices = await getPrices(symbols as string[], decimals);
 
         console.log(`\tFinished getting prices: ${Date()}`); 
 
@@ -658,8 +505,8 @@ async function main() {
         if (nSubmitTimes > submitBufferBurnIn) {
             // new submitBuffer in seconds
             submitBuffer = submitBufferBase + submitMean + submitBufferStd*submitStd;
-            if(submitBuffer < 15)
-                submitBuffer = 15;
+            if(submitBuffer < 20)
+                submitBuffer = 20;
         }
         console.log(`   New:  ${submitBuffer}`);
         console.log(`   Mean: ${submitMean}`);

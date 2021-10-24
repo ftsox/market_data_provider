@@ -2219,6 +2219,11 @@ cbor@^5.1.0:
     bignumber.js "^9.0.1"
     nofilter "^1.0.4"
 
+ccxt@^1.58.92:
+  version "1.58.95"
+  resolved "https://registry.npmjs.org/ccxt/-/ccxt-1.58.95.tgz#4469343487b8e79d9221f6c81bb6709cb73f0823"
+  integrity sha512-wgmxk5xQWhUexkwHfMVEdkgVRTdFMj11oVxiPUqrdZ3YyXyowhw7KigbhEmA2ZPsBJFJtiVyhIyrvR3vUfeRlg==
+
 center-align@^0.1.1:
   version "0.1.3"
   resolved "https://registry.npmjs.org/center-align/-/center-align-0.1.3.tgz#aa0d32629b6ee972200411cbd4461c907bc2b7ad"

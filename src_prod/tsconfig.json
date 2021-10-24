@@ -11,6 +11,8 @@
       "sourceMap": true,
       "noImplicitAny": false,
       "outDir": "dist/",
+      "noImplicitReturns": false,
+      "strictNullChecks":false,
       "typeRoots": [
         "test/types",
         "node_modules/@types"
