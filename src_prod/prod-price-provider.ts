@@ -63,7 +63,17 @@ const web3_backup = new Web3(
     new Web3.providers.HttpProvider(URL1)
 );
 
-let exchanges = ['binance','ftx','huobi','kucoin','gateio'];
+let exchanges = [
+    'binance', 
+    'ftx', 
+    'huobi', 
+    'kucoin', 
+    'gateio',
+    // 'kraken',      // causes an error with fetchTickers
+    // 'bitstamp',    // doesn't support fetchTickers
+    // 'coinbase',    // doesn't support fetchTickers
+    'okex',
+];
 var baseCurrency = 'USD';
 var baseCurrencyLower = baseCurrency.toLowerCase();
 var priceSource: string = process.env.PRICE_SOURCE || '';
@@ -182,45 +192,42 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
     //     let exchange = new ccxt[element]({});
     //     fetchTargets.push(exchange);
     // });
-    var exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
+    let exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
 
     // let sym = assets[0];
     // let ticker = [sym, baseCurrency].join('/');
 
-    var baseCurrency = 'USD';
-    var baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
-    var basesCombined = [baseCurrency, ...baseCurrencyAlts];
+    // let baseCurrency = baseCurrency;
+    let baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
+    let basesCombined = [baseCurrency, ...baseCurrencyAlts];
     // let baseCurrencyAlts = ['USDT',];   // enable multiple alternative bases
     // Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
     // Use those for conversion, flag if it's a delta of more than x% (TODO)
 
-    // TODO: have both USD bases and USDT bases, plus USDT/USD for all exchanges
-    // Then convert USDT prices to USD and average between all pairs 
-    // (ideally weighted by volume - see quoteVolume or info.quoteVolume24h or info.volumeUsd24h)
     let tickersBase = assets.map((sym) => `${sym}/${baseCurrency}`);
     let tickersBaseAlts = baseCurrencyAlts.map(baseCurrencyAlt => assets.map((sym) => `${sym}/${baseCurrencyAlt}`));
-    var tickersBaseAltsFlat = tickersBaseAlts.reduce((partial_list, a) => [...partial_list, ...a], [])
+    let tickersBaseAltsFlat = tickersBaseAlts.reduce((partial_list, a) => [...partial_list, ...a], [])
     let tickersAltsToBase = baseCurrencyAlts.map((alt) => `${alt}/${baseCurrency}`);
     // let baseCurrencyAltToBaseCurrencyTicker = `${baseCurrencyAlt}/${baseCurrency}`;
     let tickersFull = [...new Set([...tickersBase, ...tickersBaseAltsFlat, ...tickersAltsToBase])];     // deduplication with Set
     let tickersBaseToSymbolsMap = new Map(assets.map((sym, i) => [sym, tickersBase[i]]));       // doesn't include USD/USDT
     // let tickersBaseAltToSymbolsMap = new Map(assets.map((sym, i) => [sym, tickersBaseAltsFlat[i]]));
 
-    var pxsEx = {};     // arrays of prices for each ticker
-    var volsEx = {};    // arrays of volumes for each ticker (in base pair numeraire)
+    let pxsEx = {};     // arrays of prices for each ticker
+    let volsEx = {};    // arrays of volumes for each ticker (in base pair numeraire)
     try {
         // const pxPromises: any[] = [];
         // for (let i = 0; i < exchangesObjs.length; i++) {
         //     pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
         // }
         // Get async Promise API call objects
-        var pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
+        let pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
 
         // Resolve those Promises concurrently
         const allRawData = await Promise.all(pxPromises);
 
         // Sort the raw data into various tickers
-        var tickersRet: any[] = [];
+        let tickersRet: any[] = [];
         for (let i = 0; i < allRawData.length; i++) {
             //console.log(allRawData[i]);
             tickersRet = Object.keys(allRawData[i]); // will typically be missing a bunch of keys
@@ -240,20 +247,20 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         // get prices for alternative base currencies
         // Calculate weighted average
         // Could do this recursively (e.g. use BTC/USDT and BTC/USD to calculate BTC/USD rate), but for now keep it simple
-        var baseAltsPxs = tickersAltsToBase.map((altTicker, idx) => 
+        let baseAltsPxs = tickersAltsToBase.map((altTicker, idx) => 
             math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker])
         );
-        var baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
+        let baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
         baseAltPxsMap.set('USD', 1);
 
         // Get to volume weighted price for each asset
         // TODO: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
-        var prices = assets.map((asset, idx) => {
-            var pxsBase = [];
-            var volsBase = [];
+        let prices = assets.map((asset, idx) => {
+            let pxsBase = [];
+            let volsBase = [];
             // convert each set of quotes for each base to global base (USD)
-            for (var base of basesCombined) {
-                var ticker = `${asset}/${base}`;
+            for (let base of basesCombined) {
+                let ticker = `${asset}/${base}`;
                 // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
                 pxsBase.push (...math.dotMultiply( pxsEx[ticker] || [], baseAltPxsMap.get(base)));
                 volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
