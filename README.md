@@ -45,7 +45,7 @@ yarn build
 node ./dist/prod-price-provider.js
 ```
 
-Anytime changes are made, `yarn build` or equivalent must be rerun.
+Anytime changes are made, `yarn build` or equivalent must be rerun (or you can use the `yarn runFromBuild` custom command).
 
 Ensure .env is properly placed in the `src_prod` folder.
 

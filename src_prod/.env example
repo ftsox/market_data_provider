@@ -9,4 +9,4 @@ GMAIL_USER=gmail_name_without_@gmail.com
 GMAIL_PASSWORD=gmail_app_password
 ERROR_MAIL_LIST="email@example.com,email2@gmail.com"
 # Network options: localhost, songbird, flare
-NETWORK='localhost'
+NETWORK='songbird'
