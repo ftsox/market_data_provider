@@ -73,6 +73,7 @@ let exchanges = [
     // 'bitstamp',    // doesn't support fetchTickers
     // 'coinbase',    // doesn't support fetchTickers
     'okex',
+    // 'bitfinex',    // doesn't have quote volume (but does have baseVolume)
 ];
 var baseCurrency = 'USD';
 var baseCurrencyLower = baseCurrency.toLowerCase();
@@ -239,7 +240,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
                 );
                 volsEx[tickerSymbol] = volsEx[tickerSymbol] || [];
                 volsEx[tickerSymbol].push(
-                    allRawData[i][tickerSymbol].quoteVolume
+                    allRawData[i][tickerSymbol].quoteVolume || 0
                 );
             });
         };
@@ -254,7 +255,8 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         baseAltPxsMap.set('USD', 1);
 
         // Get to volume weighted price for each asset
-        // TODO: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
+        // TODO: alternative 1: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
+        // TODO: add an exchange-level weighting factor, s.t. weight = volume * exchange_factor, to reflect exchange quality of volume
         let prices = assets.map((asset, idx) => {
             let pxsBase = [];
             let volsBase = [];
@@ -268,6 +270,23 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
             return math.dot(pxsBase, volsBase) / math.sum(volsBase);
         });
         return prices;
+
+        // // TODO: alternative 2: allRawData.map()
+        // let quotesFlat = allRawData.map((exRets, i) => {
+        //     return Object.entries(exRets).map(([ticker, quote], j) => {
+        //         return {
+        //             'exchangeId': exchangesObjs[i].id,
+        //             'ticker': ticker,
+        //             'asset': quote['symbol'].split('/')[0],
+        //             'base': quote['symbol'].split('/')[1], 
+        //             'bid': quote['bid'],
+        //             'ask': quote['ask'],
+        //             'mid': (quote['bid'] + quote['ask'])/2,
+        //             'volume': quote['quoteVolume'],
+        //         };
+        //     });
+        // }).reduce((partial_list, a) => [...partial_list, ...a], []);
+
 
         // tickersFull.map(...)
 
