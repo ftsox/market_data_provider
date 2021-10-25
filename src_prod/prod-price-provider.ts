@@ -355,7 +355,7 @@ async function main() {
     // Need a bit of buffer to let the other function calls return
     // Should be based on when others submit their prices to make sure we're as close as possible to them
     // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
-    var submitBuffer = 22;              // Initial buffer for how many seconds before end of epoch we should start submission
+    var submitBuffer = 25;              // Initial buffer for how many seconds before end of epoch we should start submission
     var submitTimes: Number[] = [];     // Record recent times to measure how much buffer we need
     var submitBufferStd = 3;            // How many stds (normal)
     // var submitBufferDecay = 0.999;      // Decay factor on each loop
@@ -438,7 +438,7 @@ async function main() {
                     console.log(`\tSubmitting price hashes:       ${Date()}`)
                     const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
                     console.log(`\tFirst Provider timestamp:      ${Date()}`); 
-                   
+                    result.push(tx);
                     result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
                     console.log(`\tSecond Provider timestamp:     ${Date()}`); 
                     tx.once('transactionHash',  async hash => {
@@ -545,23 +545,11 @@ async function main() {
                     data: exchangeEncodeABI
                 };
                 const result : any[] = [];
-                const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
-                signPromise.then((signedTx) => {  
-                    // raw transaction string may be available in .raw or 
-                    // .rawTransaction depending on which signTransaction
-                    // function was called
-                    
-                    const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
-                    const result : typeof tx = [];
-                    result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
-                    tx.once('transactionHash',  async hash => {
-                        console.log("txHash: ", hash);
-                    })
-                   
-                });
-                await Promise.all(result)
+                const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`)
+                .then(signedTx => web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction))
+                .then(receipt => console.log(`\tFinished reveal:         ${Date()}`))
+                .catch(err => console.error(err));
                 
-                console.log(`\tFinished reveal:         ${Date()}`); 
                 console.log("Revealed prices for epoch ", currentEpoch);
             } catch (error) {
                 console.log('Error submitting price reveals');
