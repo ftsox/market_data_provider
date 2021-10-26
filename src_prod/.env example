@@ -3,6 +3,7 @@ COINAPI_KEY='YOUR KEY HERE'
 CMC_PRO_API_KEY='YOUR KEY HERE'
 # Price Source Options: CCXT, CMC, CRYPTOCOMPARE, COINAPI, COINGECKO
 PRICE_SOURCE='CMC'
+EXCHANGE_SOURCE = "coinbasepro, binance, ftx, huobi, kucoin, gateio, okex"
 RPC_NODE_URL='http://IP_ADDRESS:9650/ext/bc/C/rpc' # Reference: https://gitlab.com/flarenetwork/node-config
 FTSO_PRIVATE_KEY='YOUR KEY HERE'
 GMAIL_USER=gmail_name_without_@gmail.com

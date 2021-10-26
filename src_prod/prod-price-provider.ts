@@ -63,23 +63,12 @@ const web3_backup = new Web3(
     new Web3.providers.HttpProvider(URL1)
 );
 
-let exchanges = [
-    `coinbasepro`,
-    'binance', 
-    'ftx', 
-    'huobi', 
-    'kucoin', 
-    'gateio',
-    // 'kraken',      // causes an error with fetchTickers
-    // 'bitstamp',    // doesn't support fetchTickers
-    // 'coinbase',    // doesn't support fetchTickers
-     'okex',
-    // 'bitfinex',    // doesn't have quote volume (but does have baseVolume)
-];
+
 var baseCurrency = 'USD';
 var baseCurrencyLower = baseCurrency.toLowerCase();
 var priceSource: string = process.env.PRICE_SOURCE || '';
-
+var exchangeSource: string = process.env.EXCHANGE_SOURCE || '';
+let exchanges = exchangeSource.split(", ");
 
 /*
     Helper Functions
@@ -240,6 +229,16 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
     //     let exchange = new ccxt[element]({});
     //     fetchTargets.push(exchange);
     // });
+    if(exchanges.length == 0)
+    {
+        console.error("CCXT chosen but no exchange source, exiting")
+        process.exit(1);
+    }
+    var string = "";
+        exchanges.forEach(function(element){
+            string += element + " ";
+        });
+        console.log("Ex Src: ", string);
     let exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
 
     // let sym = assets[0];
