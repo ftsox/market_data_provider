@@ -72,7 +72,7 @@ let exchanges = [
     // 'kraken',      // causes an error with fetchTickers
     // 'bitstamp',    // doesn't support fetchTickers
     // 'coinbase',    // doesn't support fetchTickers
-    'okex',
+    // 'okex',
     // 'bitfinex',    // doesn't have quote volume (but does have baseVolume)
 ];
 var baseCurrency = 'USD';
@@ -89,7 +89,8 @@ var priceSource: string = process.env.PRICE_SOURCE || '';
 // 2.6 secs as of 2021-10-10
 // So this could be off by around 2.6 seconds (plus some extra consensus time sync error)
 // Returns UNIX time in seconds 
-const useSystemTime = true;
+// const useSystemTime = true;
+const useSystemTime = false;
 // System time on Google Cloud Compute should be pretty accurate
 // Source 1: https://morganpeat.github.io/cloudmigration/2019/02/01/time-sync-on-cloud-vms-2.html
 // Source 2: https://cloud.google.com/compute/docs/instances/managing-instances#configure-ntp
@@ -230,6 +231,7 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
 // https://github.com/ccxt/ccxt
 // https://ccxt.readthedocs.io/en/latest/manual.html#price-tickers
 // list of exchanges: https://ccxt.readthedocs.io/en/latest/manual.html#exchanges
+var volumeWeight = false;
 async function getPricesCCXT(assets: string[]): Promise<number[]>{
     // let   fetchTargets: any[] =  [];
     // exchanges.forEach(element => {
@@ -242,8 +244,9 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
     // let sym = assets[0];
     // let ticker = [sym, baseCurrency].join('/');
 
-    // let baseCurrency = baseCurrency;
-    let baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
+    let baseCurrency = 'USDT';
+    // let baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
+    let baseCurrencyAlts = [];   // enable multiple alternative bases
     let basesCombined = [baseCurrency, ...baseCurrencyAlts];
     // let baseCurrencyAlts = ['USDT',];   // enable multiple alternative bases
     // Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
@@ -305,7 +308,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
             math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker])
         );
         let baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
-        baseAltPxsMap.set('USD', 1);
+        baseAltPxsMap.set(baseCurrency, 1);
 
         // Get to volume weighted price for each asset
         // TODO: alternative 1: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
@@ -317,8 +320,12 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
             for (let base of basesCombined) {
                 let ticker = `${asset}/${base}`;
                 // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
-                pxsBase.push (...math.dotMultiply( pxsEx[ticker] || [], baseAltPxsMap.get(base)));
-                volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
+                pxsBase.push (...math.dotMultiply(pxsEx[ticker] || [], baseAltPxsMap.get(base)));
+                if (volumeWeight) {
+                    volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
+                } else {
+                    volsBase.push(...(new Array(pxsEx[ticker].length).fill(1)));
+                }
             }
             return math.dot(pxsBase, volsBase) / math.sum(volsBase);
         });
@@ -693,7 +700,7 @@ async function main() {
     console.log(`\tsubmitPeriod (secs): ${submitPeriod}`);
     console.log(`\trevealPeriod (secs): ${revealPeriod}`);
     
-    const checkPrices = false;
+    const checkPrices = true;
     if (checkPrices) {
         // Test: get prices for symbols
         var initialEpoch = Math.floor(((await getTime(web3)) - firstEpochStartTime) / submitPeriod);
@@ -730,8 +737,8 @@ async function main() {
     // Need a bit of buffer to let the other function calls return
     // Should be based on when others submit their prices to make sure we're as close as possible to them
     // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
-    var submitBuffer = 20;              // Initial buffer for how many seconds before end of epoch we should start submission
-    var submitBufferMin = 12;           // Minimum buffer
+    var submitBuffer = 18;              // Initial buffer for how many seconds before end of epoch we should start submission
+    var submitBufferMin = 18;           // Minimum buffer
     var submitTimes: Number[] = [];     // Record recent times to measure how much buffer we need
     var submitBufferStd = 3;            // How many stds (normal)
     // var submitBufferDecay = 0.999;      // Decay factor on each loop
