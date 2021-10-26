@@ -515,10 +515,9 @@ async function main() {
     const app = express();
 
     app.get('/', (req, res) => {
-    console.log('PING.');
-
-    const target = process.env.TARGET || 'Running';
-    res.send(`FTSO: ${target}!`);
+        console.log('PING.');
+        const target = process.env.TARGET || 'Running';
+        res.send(`FTSO: ${target}!`);
     });
 
     const port = process.env.PORT || 8080;

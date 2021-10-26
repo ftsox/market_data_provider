@@ -14,6 +14,7 @@ import seaborn as sns
 from twilio.rest import Client
 from dotenv import load_dotenv
 load_dotenv()
+# load_dotenv('./scr_prod/.env')    // TODO: point to src_prod file
 
 
 import web3
@@ -166,7 +167,8 @@ prevBlock = w3.eth.get_block(lastBlock.number - blockDelta)
 avgBlockTime = (lastBlock.timestamp - prevBlock.timestamp)/blockDelta      # in seconds
 
 # Lookback period to get start epoch
-lookbackPriceEpochs = 1000
+# lookbackPriceEpochs = 1000
+lookbackPriceEpochs = 160
 blocksPerPriceEpoch = submitPeriod / avgBlockTime
 lockbackBlocks = round(lookbackPriceEpochs * blocksPerPriceEpoch)
 
