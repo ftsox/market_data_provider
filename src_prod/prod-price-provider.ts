@@ -901,7 +901,8 @@ async function main() {
         // advance to start of reveal period
         now = await getTime(web3);
         next = nextEpoch * submitPeriod + firstEpochStartTime;
-        diff = Math.max(Math.floor(next - now), 0);     // don't sleep for negative time
+        diff = Math.max(Math.floor(next + 5 - now), 0);     // have buffer of 5 seconds to ensure we're in the reveal period
+        // TODO: catch "Reveal period not active" error
         console.log(`\nWaiting for ${diff} seconds until reveal`); 
         await sleep(diff * 1000);
         
