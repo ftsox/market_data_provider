@@ -89,18 +89,27 @@ var priceSource: string = process.env.PRICE_SOURCE || '';
 // 2.6 secs as of 2021-10-10
 // So this could be off by around 2.6 seconds (plus some extra consensus time sync error)
 // Returns UNIX time in seconds 
+const useSystemTime = true;
+// System time on Google Cloud Compute should be pretty accurate
+// Source 1: https://morganpeat.github.io/cloudmigration/2019/02/01/time-sync-on-cloud-vms-2.html
+// Source 2: https://cloud.google.com/compute/docs/instances/managing-instances#configure-ntp
 async function getTime(web3: any): Promise<number>{
-    if (isTestnet) {
-        await time.advanceBlock();
+    if (useSystemTime) {
+        return (new Date()).getTime() / 1000;
+    } else {
+        if (isTestnet) {
+            await time.advanceBlock();
+        }
+        const blockNum = await web3.eth.getBlockNumber();
+        const block = await web3.eth.getBlock(blockNum);
+        const timestamp = block.timestamp;
+        return timestamp as number;
     }
-    const blockNum = await web3.eth.getBlockNumber();
-    const block = await web3.eth.getBlock(blockNum);
-    const timestamp = block.timestamp;
-    return timestamp as number;
 }
 
 
 // Return time in seconds
+// http://worldtimeapi.org/api
 async function getTimeWTA(): Promise<number>{
     const worldTimeApiUrl = `http://worldtimeapi.org/api/timezone/Europe/London`;
     const requestOptions = {
@@ -677,7 +686,7 @@ async function main() {
     console.log(`\tsubmitPeriod (secs): ${submitPeriod}`);
     console.log(`\trevealPeriod (secs): ${revealPeriod}`);
     
-    const checkPrices = true;
+    const checkPrices = false;
     if (checkPrices) {
         // Test: get prices for symbols
         var initialEpoch = Math.floor(((await getTime(web3)) - firstEpochStartTime) / submitPeriod);
@@ -714,13 +723,14 @@ async function main() {
     // Need a bit of buffer to let the other function calls return
     // Should be based on when others submit their prices to make sure we're as close as possible to them
     // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
-    var submitBuffer = 25;              // Initial buffer for how many seconds before end of epoch we should start submission
+    var submitBuffer = 20;              // Initial buffer for how many seconds before end of epoch we should start submission
+    var submitBufferMin = 12;           // Minimum buffer
     var submitTimes: Number[] = [];     // Record recent times to measure how much buffer we need
     var submitBufferStd = 3;            // How many stds (normal)
     // var submitBufferDecay = 0.999;      // Decay factor on each loop
     // var submitBufferIncrease = 1.1;     // Increase factor (multiple of std) for when we miss a submission window
     var submitBufferBase = 3;           // Base buffer rate.
-    var submitBufferBurnIn = 2;        // Number of periods before adjusting submitBuffer
+    var submitBufferBurnIn = 5;        // Number of periods before adjusting submitBuffer
     let now = await getTime(web3);
     let currentEpoch = 0;
     let nextEpoch = currentEpoch;
@@ -880,8 +890,8 @@ async function main() {
         if (nSubmitTimes > submitBufferBurnIn) {
             // new submitBuffer in seconds
             submitBuffer = submitBufferBase + submitMean + submitBufferStd*submitStd;
-            if(submitBuffer < 12)
-                submitBuffer = 12;
+            if(submitBuffer < submitBufferMin)
+                submitBuffer = submitBufferMin;
         }
         console.log(`   New:  ${submitBuffer}`);
         console.log(`   Mean: ${submitMean}`);
