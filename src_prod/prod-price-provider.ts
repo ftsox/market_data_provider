@@ -64,6 +64,7 @@ const web3_backup = new Web3(
 );
 
 let exchanges = [
+    `coinbasepro`,
     'binance', 
     'ftx', 
     'huobi', 
@@ -72,7 +73,7 @@ let exchanges = [
     // 'kraken',      // causes an error with fetchTickers
     // 'bitstamp',    // doesn't support fetchTickers
     // 'coinbase',    // doesn't support fetchTickers
-    // 'okex',
+     'okex',
     // 'bitfinex',    // doesn't have quote volume (but does have baseVolume)
 ];
 var baseCurrency = 'USD';
@@ -265,22 +266,52 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
     // Map [`XRP` -> `XRP/USD`]
     let tickersBaseToSymbolsMap = new Map(assets.map((sym, i) => [sym, tickersBase[i]]));       // doesn't include USD/USDT
     // let tickersBaseAltToSymbolsMap = new Map(assets.map((sym, i) => [sym, tickersBaseAltsFlat[i]]));
-
+    
     let pxsEx = {};     // arrays of prices for each ticker
     let volsEx = {};    // arrays of volumes for each ticker (in base pair numeraire)
+    let formattedSingleRawData = {};
+    
     try {
-        // const pxPromises: any[] = [];
-        // for (let i = 0; i < exchangesObjs.length; i++) {
-        //     pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
-        // }
-        // Get async Promise API call objects
-        let pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
+        const allRawData: any[] = [];
+        const pxPromises: any[] = [];
+        const singlePxPromises: any[] = [];
+        for (let i = 0; i < exchangesObjs.length; i++) {
+            if(exchangesObjs[i].has[`fetchTickers`])
+                pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
+            else if(exchangesObjs[i].id.toLowerCase() == `coinbasepro`)
+            {
+                for(let j = 0; j<tickersFull.length; j++)
+                {
+               
+                    try
+                    {
+                    formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
+                    }
+                    catch(err: unknown){
+                        if (err instanceof Error) {
+                            if(err.name!='BadSymbol')
+                                console.log(err); //ignore BadSymbol
+                          }
+                    }
+
+                }
+                allRawData.push(formattedSingleRawData);
+               
+            }
+            
+            else
+                console.error("Unhandled exchange: ", exchangesObjs[i].name);
+        }
+       // Get async Promise API call objects
+        //let pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
 
         // Resolve those Promises concurrently
         // This takes by far the longest time in this function, roughly 2 to 2.5 seconds
-        const allRawData = await Promise.all(pxPromises);
-
+        let tempData = await Promise.all(pxPromises);
+        tempData.map(x => allRawData.push(x));
+        
         // Sort the raw data into various tickers
+
         let tickersRet: any[] = [];
         for (let i = 0; i < allRawData.length; i++) {
             //console.log(allRawData[i]);
