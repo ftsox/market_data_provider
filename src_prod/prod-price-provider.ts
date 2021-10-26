@@ -248,13 +248,18 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
     // let baseCurrencyAlts = ['USDT',];   // enable multiple alternative bases
     // Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
     // Use those for conversion, flag if it's a delta of more than x% (TODO)
-
+    //['XRP/USD`, 'LTC/USD' ...]
     let tickersBase = assets.map((sym) => `${sym}/${baseCurrency}`);
+    // [][] -> ['XRP/USDT`, `LTC/USDT` ...][`XRP/BTC`, `LTC/BTC` ...]
     let tickersBaseAlts = baseCurrencyAlts.map(baseCurrencyAlt => assets.map((sym) => `${sym}/${baseCurrencyAlt}`));
+    //[] -> [XRP/USDT`, `LTC/USDT`..., `XRP/BTC`, `LTC/BTC`...]
     let tickersBaseAltsFlat = tickersBaseAlts.reduce((partial_list, a) => [...partial_list, ...a], [])
+    //[] -> [`USDT/USD`, `USDT/BTC`]
     let tickersAltsToBase = baseCurrencyAlts.map((alt) => `${alt}/${baseCurrency}`);
     // let baseCurrencyAltToBaseCurrencyTicker = `${baseCurrencyAlt}/${baseCurrency}`;
+    //[] -> [`XRP/USD`, `LTC/USD`,... `XRP/USDT`, `LTC/USDT`..., `XRP/BTC`, `LTC/BTC`...]
     let tickersFull = [...new Set([...tickersBase, ...tickersBaseAltsFlat, ...tickersAltsToBase])];     // deduplication with Set
+    // Map [`XRP` -> `XRP/USD`]
     let tickersBaseToSymbolsMap = new Map(assets.map((sym, i) => [sym, tickersBase[i]]));       // doesn't include USD/USDT
     // let tickersBaseAltToSymbolsMap = new Map(assets.map((sym, i) => [sym, tickersBaseAltsFlat[i]]));
 
@@ -278,6 +283,9 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
             //console.log(allRawData[i]);
             tickersRet = Object.keys(allRawData[i]); // will typically be missing a bunch of keys
             //console.log("tickerRet:", tickersRet);
+            // Iterate through all price pairs for the same asset (XRP/USD, XRP/USDT, XRP/BTC...)
+            // and convert them to USD based and push them into an array. After we iterate through
+            // the entire array, we convert them to a single volume weighted average.
             tickersRet.forEach(tickerSymbol => {
                 pxsEx[tickerSymbol] = pxsEx[tickerSymbol] || [];
                 pxsEx[tickerSymbol].push(
