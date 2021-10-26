@@ -88,6 +88,7 @@ var priceSource: string = process.env.PRICE_SOURCE || '';
 // Average block time: https://songbird-explorer.flare.network/
 // 2.6 secs as of 2021-10-10
 // So this could be off by around 2.6 seconds (plus some extra consensus time sync error)
+// Returns UNIX time in seconds 
 async function getTime(web3: any): Promise<number>{
     if (isTestnet) {
         await time.advanceBlock();
@@ -97,6 +98,40 @@ async function getTime(web3: any): Promise<number>{
     const timestamp = block.timestamp;
     return timestamp as number;
 }
+
+
+// Return time in seconds
+async function getTimeWTA(): Promise<number>{
+    const worldTimeApiUrl = `http://worldtimeapi.org/api/timezone/Europe/London`;
+    const requestOptions = {
+        method: 'GET',
+        url: worldTimeApiUrl,
+        params: {
+        },
+        headers: {
+        },
+    };
+    try {
+        let response = await axios.request(requestOptions);
+        let dt = response.data.unixtime || (new Date()).getTime() / 1000;
+        return dt;
+    } catch(error){
+        console.log(`World Time API error:\n  ${error}`);
+        return (new Date()).getTime() / 1000;
+    }    
+}
+// // Testing
+// console.log(`Time diffs:`);
+// var timeDiffs = [];
+// for (let i=0; i<100;i++) {
+//     let timeWTA = await getTimeWTA();
+//     let timeSys = new Date().getTime() / 1000;
+//     let diff = timeSys - timeWTA;
+//     timeDiffs.push(diff)
+//     console.log(`\tRun ${i} diff: ${diff}`);
+// }
+// console.log(`Average diff: ${math.mean(timeDiffs)}`);
+
 
 export function submitPriceHash(price: number, random: number, address: string, web3: any): string {
     return ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode([ "uint256", "uint256", "address" ], [price.toString(), random.toString(), address]))
@@ -225,6 +260,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         let pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
 
         // Resolve those Promises concurrently
+        // This takes by far the longest time in this function, roughly 2 to 2.5 seconds
         const allRawData = await Promise.all(pxPromises);
 
         // Sort the raw data into various tickers
@@ -527,6 +563,8 @@ async function main() {
     // console.log(`Getting prices from ${priceSource}`);
 
     // // test update frequency
+    // var x = await getPricesCCXTTest(symbols);
+
     // var nRuns = 20;
     // var totalTime = 0;
     // for (let i = 0; i < nRuns; i++){
@@ -545,7 +583,6 @@ async function main() {
     // return;
 
     const ftsos = await Promise.all(
-       
         symbols.map(async sym =>  new web3.eth.Contract(JSON.parse(JSON.stringify(MockFtso)), await ftsoRegistry.methods.getFtsoBySymbol(sym).call()))
     );
 
@@ -689,7 +726,6 @@ async function main() {
     let nextEpoch = currentEpoch;
     let diff = 0;
     while (true) {
-
         // Get time and current epoch params
         now = await getTime(web3);
         // now = (new Date()).getTime() / 1000; // susceptible to system clock drift
@@ -741,7 +777,7 @@ async function main() {
             var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
             var gasPrice = await web3.eth.getGasPrice();
             const transactionObject = {
-                chainId: 19,
+                chainId: 19,                                    // TODO: parameterize
                 nonce: web3.utils.toHex(transactionNonce),
                 gasLimit: web3.utils.toHex(469532),
                 gasPrice: web3.utils.toHex(gasPrice*1.2),
@@ -751,29 +787,46 @@ async function main() {
                 data: exchangeEncodeABI
             };
             const result : any[] = [];
-            const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
-                signPromise.then((signedTx) => {  
-                    // raw transaction string may be available in .raw or 
-                    // .rawTransaction depending on which signTransaction
-                    // function was called
-                    console.log(`\tSubmitting price hashes:       ${Date()}`)
-                    const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
-                    console.log(`\tFirst Provider timestamp:      ${Date()}`); 
-                   
-                    result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
-                    console.log(`\tSecond Provider timestamp:     ${Date()}`); 
-                    tx.once('transactionHash',  async hash => {
-                        console.log("SubmitPriceHash txHash: ", hash);
-                    })
-                    
-                });
-                await Promise.all(result);
+            // const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
+            // signPromise.then((signedTx) => {  
+            //     // raw transaction string may be available in .raw or 
+            //     // .rawTransaction depending on which signTransaction
+            //     // function was called
+            //     console.log(`\tSubmitting price hashes:       ${Date()}`)
+            //     const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
+            //     console.log(`\tFirst Provider timestamp:      ${Date()}`); 
+
+            //     result.push(tx);
+            //     result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+            //     console.log(`\tSecond Provider timestamp:     ${Date()}`); 
+            //     tx.once('transactionHash',  async hash => {
+            //         console.log("SubmitPriceHash txHash: ", hash);
+            //     })
+                
+            // });
+
+            const signedTx = await web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
+            // raw transaction string may be available in .raw or 
+            // .rawTransaction depending on which signTransaction
+            // function was called
+            console.log(`\tSubmitting price hashes:       ${Date()}`)
+            const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
+            console.log(`\tFirst Provider timestamp:      ${Date()}`); 
+
+            result.push(tx);
+            result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+            console.log(`\tSecond Provider timestamp:     ${Date()}`); 
+            tx.once('transactionHash',  async hash => {
+                console.log("SubmitPriceHash txHash: ", hash);
+            })
             
-                submittedHash = true;
+            await Promise.all(result);
+        
+            submittedHash = true;
         } catch (error) {
             // TODO(MCZ): add notifications
             submittedHash = false;
-            console.log(`\tError submitting price hashes::     ${Date()}`); 
+            console.log(`\tError submitting price hashes:     ${Date()}`); 
             console.log(error);
             errorCount += 1;
             // if this is due to late submission, then we need to increase our buffer
@@ -795,20 +848,20 @@ async function main() {
 
             // Send error message
             // send mail with defined transport object
-            try{
-            let info = await transporter.sendMail({
-                from: '"FTSO Monitor" <cv40067@gmail.com>',       // sender address
-                to: "cv40067@gmail.com, mczochowski@gmail.com",                // list of receivers
-                subject: `FTSO error for ${priceProviderAccount.address}`,                           // Subject line
-                text: `Price hash submission error for ${priceProviderAccount.address}`,        // plain text body
-                html: `Price hash submission error for <b>${priceProviderAccount.address}</b>`, // html body
-            });
-        }
-        catch (error)
-        {
-            console.log(`\tError Sending mail:     ${Date()}`);
-            console.log(error);
-        }
+            try {
+                let info = await transporter.sendMail({
+                    from: '"FTSO Monitor" <cv40067@gmail.com>',       // sender address
+                    to: "cv40067@gmail.com, mczochowski@gmail.com",                // list of receivers
+                    subject: `FTSO error for ${priceProviderAccount.address}`,                           // Subject line
+                    text: `Price hash submission error for ${priceProviderAccount.address}`,        // plain text body
+                    html: `Price hash submission error for <b>${priceProviderAccount.address}</b>`, // html body
+                });
+            }
+            catch (error)
+            {
+                console.log(`\tError Sending mail:     ${Date()}`);
+                console.log(error);
+            }
         }
         var endSubmitTime: Date = new Date();
         var submitTime = (endSubmitTime.getTime() - startSubmitTime.getTime()) / 1000;   // in seconds
@@ -866,43 +919,49 @@ async function main() {
                     data: exchangeEncodeABI
                 };
                 const result : any[] = [];
-                const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
-                signPromise.then((signedTx) => {  
-                    // raw transaction string may be available in .raw or 
-                    // .rawTransaction depending on which signTransaction
-                    // function was called
-                    
-                    const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
-                    const result : typeof tx = [];
-                    result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
-                    tx.once('transactionHash',  async hash => {
-                        console.log("txHash: ", hash);
-                    })
-                   
-                });
+
+
+                // const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`)
+                // .then(signedTx => web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction))
+                // .then(receipt => console.log(`\tFinished reveal:         ${Date()}`))
+                // .catch(err => console.error(err));
+
+
+                const signedTx = await web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
+                // raw transaction string may be available in .raw or 
+                // .rawTransaction depending on which signTransaction
+                // function was called
+                const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
+                result.push(tx);
+                result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+                tx.once('transactionHash',  async hash => {
+                    console.log("txHash: ", hash);
+                })
                 await Promise.all(result)
-                
                 console.log(`\tFinished reveal:         ${Date()}`); 
+
+
+
                 console.log("Revealed prices for epoch ", currentEpoch);
             } catch (error) {
                 console.log('Error submitting price reveals');
                 console.log(error);
                 errorCount += 1;
 
-            try {  // Send error message
-                let info = await transporter.sendMail({
-                    from: `"FTSO Monitor" <${process.env.GMAIL_USER}@gmail.com>`,                      // sender address
-                    to: `${process.env.ERROR_MAIL_LIST}`,                                              // list of receivers
-                    subject: `FTSO error for ${priceProviderAccount.address}`,                         // Subject line
-                    text: `Price reveal submission error for ${priceProviderAccount.address}`,         // plain text body
-                    html: `Price reveal submission error for <b>${priceProviderAccount.address}</b>`,  // html body
-                });
-            }
-            catch (error)
-            {
-                console.log(`\tError Sending mail:     ${Date()}`);
-                console.log(error);
-            }
+                try {  // Send error message
+                    let info = await transporter.sendMail({
+                        from: `"FTSO Monitor" <${process.env.GMAIL_USER}@gmail.com>`,                      // sender address
+                        to: `${process.env.ERROR_MAIL_LIST}`,                                              // list of receivers
+                        subject: `FTSO error for ${priceProviderAccount.address}`,                         // Subject line
+                        text: `Price reveal submission error for ${priceProviderAccount.address}`,         // plain text body
+                        html: `Price reveal submission error for <b>${priceProviderAccount.address}</b>`,  // html body
+                    });
+                }
+                catch (error)
+                {
+                    console.log(`\tError Sending mail:     ${Date()}`);
+                    console.log(error);
+                }
             }
         }
         
