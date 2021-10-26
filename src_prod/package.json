@@ -13,7 +13,8 @@
     "watch": "run-s clean watch:typescript",
     "build:typescript": "tsc -d",
     "watch:typescript": "tsc -w",
-    "lint": "eslint -c .eslintrc.js --ext .ts src"
+    "lint": "eslint -c .eslintrc.js --ext .ts src",
+    "runFromBuild": "yarn build && node ./dist/prod-price-provider.js"
   },
   "license": "MIT",
   "dependencies": {

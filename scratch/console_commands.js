@@ -406,11 +406,17 @@ allRawData.then(pxsRawEx => {
     console.log(tickersRet);
     //tickersRet.forEach(tickerSymbol => {pxsEx[tickerSymbol] = pxsEx[tickerSymbol] || []; pxsEx[tickerSymbol].push((pxsRawEx[ticker].bid + pxsRawEx[ticker].ask)/2) });
 });
- 
+
+pxsRawEx = await ftx.fetchTickers(tickersBase);
+tickersRet = Object.keys(pxsRawEx); // will typically be missing a bunch of keys
+pxsEx = new Map(tickersRet.map((ticker) => [ticker, (pxsRawEx[ticker].bid + pxsRawEx[ticker].ask)/2] ));
+pxsExList = tickersBase.map((ticker) => pxsEx.get(ticker))    // will have lots of undefineds
+
  
   //pxsExList = tickersBase.map((ticker) => pxsEx.get(ticker))    // will have lots of undefineds
 // extract USDT/USD price
 baseCurrencyAltPx = pxsEx.get(baseCurrencyAltToBaseCurrencyTicker)
+
 
 // pxsRawExList = symbols.map((sym) => )
 

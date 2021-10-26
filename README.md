@@ -4,6 +4,8 @@ Songbird/Flare FTSO server.
 
 ## Development
 <!-- First follow the `Getting Started` instructions in the [FTSO npm example package](https://www.npmjs.com/package/@flarenetwork/ftso_price_provider_kick_off_package) to get your local environment ready. -->
+
+### Initial Setup
 Clone this repository.
 
 Install dependencies (if not already present):
@@ -43,6 +45,8 @@ yarn build
 node ./dist/prod-price-provider.js
 ```
 
+Anytime changes are made, `yarn build` or equivalent must be rerun (or you can use the `yarn runFromBuild` custom command).
+
 Ensure .env is properly placed in the `src_prod` folder.
 
 To get logging of run output, use:
@@ -53,8 +57,27 @@ tail -f run.log
 
 To run the main process in the background, use `screen` ([Explanation](https://askubuntu.com/questions/8653/how-to-keep-processes-running-after-ending-ssh-session/8657#8657)).
 
-
 See `scratch/console_commands.js` for some examples
+
+### Localhost
+
+To run on local hardhat testnet, open up two terminal windows in the root directory. In the first, run
+```
+yarn hardhat node
+```
+In the second window, run
+```
+yarn hardhat compile 
+yarn hardhat run ./deployment/scripts/deploy-mock-price-submitter.ts --network localhost
+env CHAIN_CONFIG=scdev yarn hardhat run ./deployment/scripts/prod-price-provider.ts --network localhostv
+```
+
+Then (assuming everythign is built and installed already):
+```
+cd src_prod
+node ./dist/prod-price-provider.js
+```
+
 
 ## Production
 
@@ -70,7 +93,7 @@ docker tag [image_hash] bbftso/ftsojs:[TAG]
 docker push bbftso/ftsojs:[TAG]
 ```
 
-###Deployment
+### Deployment
 Make sure docker-compose and docker are installed on the instance.
 
 On a fresh Ubuntu 20.04 instance:
