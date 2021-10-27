@@ -63,7 +63,13 @@ const web3_backup = new Web3(
 
 // var baseCurrency = 'USD';
 var baseCurrency: string = process.env.BASE_CURRENCY || 'USD';
-var baseCurrencyAlts: string[] = (process.env.BASE_CURRENCY_ALTS || '').split(', ');   // enable multiple alternative bases
+var baseCurrencyAltsRaw: string = process.env.BASE_CURRENCY_ALTS || '';   // enable multiple alternative bases
+var baseCurrencyAlts: string[];
+if (baseCurrencyAltsRaw.length == 0) {
+    baseCurrencyAlts = []; 
+} else {
+    baseCurrencyAlts = baseCurrencyAltsRaw.split(', ');
+}
 var baseCurrencyLower = baseCurrency.toLowerCase();
 var priceSource: string = process.env.PRICE_SOURCE || '';
 var exchangeSource: string = process.env.EXCHANGE_SOURCE || '';
