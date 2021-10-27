@@ -168,7 +168,7 @@ avgBlockTime = (lastBlock.timestamp - prevBlock.timestamp)/blockDelta      # in 
 
 # Lookback period to get start epoch
 # lookbackPriceEpochs = 1000
-lookbackPriceEpochs = 160
+lookbackPriceEpochs = 500
 blocksPerPriceEpoch = submitPeriod / avgBlockTime
 lockbackBlocks = round(lookbackPriceEpochs * blocksPerPriceEpoch)
 
@@ -420,23 +420,39 @@ print(provSummaryDf.sort_values(by='Mean', ascending=False).reset_index()[['Prov
 ### Rolling avg hit rates
 hitRateByEpoch = hitDfComb.groupby(level=[1],axis=1).sum()/nAssets
 # plot rolling average
-rollingHitRates = hitRateByEpoch.rolling(100, min_periods=10, axis=0).mean()
+rollingHitRates = hitRateByEpoch.rolling(20, min_periods=10, axis=0).mean()
 # rollingHitRates.plot();plt.show()
 providersOfInterest = provSummaryDf.sort_values(by='Mean', ascending=False).iloc[:5].index.to_list() + [
     '0x153aD30381b11DCE62f349c97a54c2a58956B992',
     '0xe60784D1c661a8D8eE19b442999bB71279F0A91f',
     '0x4fE889F450EcA4decd8a65B6B6eC5b7Db8EaB12E',
     '0xE76Bc13136338f27363425FcbCB36967B0540176',
+    '0x93c9063987536ac1CaC0F3e7153893AC96346528',
 ]
 fig, ax = plt.subplots(figsize=(12, 6))
 fig.subplots_adjust(left=0.1, right=0.55)
 sns.lineplot(data=rollingHitRates[providersOfInterest])
-ax.set_title('Rolling Average Hit Rate (100 Epoch Window)')
+ax.set_title('Rolling Average Hit Rate (20 Epoch Window)')
 plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 plt.show()
 
 # Just XRP
-hitDfComb['XRP'][priceProviderAddress].rolling(50, min_periods=10, axis=0).mean()
+# hitDfComb['XRP'][priceProviderAddress].rolling(50, min_periods=10, axis=0).mean()
+
+
+
+### Rolling avg hit rates
+rollingWindow = 50
+for asset in symbols:
+    # asset = 'XRP'
+    hitRateByEpochAsset = hitDfComb[asset][providersOfInterest].rolling(rollingWindow, min_periods=rollingWindow, axis=0).mean()
+    fig, ax = plt.subplots(figsize=(12, 6))
+    fig.subplots_adjust(left=0.1, right=0.55)
+    sns.lineplot(data=hitRateByEpochAsset)
+    ax.set_title(f'{asset} Rolling Average Hit Rate ({rollingWindow} Epoch Window) from Epoch {startPxEpoch} to {endPxEpoch}')
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    # plt.show()
+    plt.savefig(f'./plot/{startPxEpoch}_{endPxEpoch}_{asset}_roll{rollingWindow}.png')
 
 # dt.datetime.fromtimestamp(submitTsDf.loc[16150].epochEnd, tz=dt.timezone.utc).isoformat()
 

@@ -36,10 +36,6 @@ if (network == 'songbird') {
     isTestnet = false;
 }
 
-console.log('Configuration:')
-console.log(`    Network:   ${network}`)
-console.log(`    isTestnet: ${isTestnet}`)
-
 let URL0, URL1, privKey, priceSubmitterAddr;
 if (isTestnet) {
     URL0 = 'http://127.0.0.1:9650/ext/bc/C/rpc';
@@ -64,11 +60,28 @@ const web3_backup = new Web3(
 );
 
 
-var baseCurrency = 'USD';
+
+// var baseCurrency = 'USD';
+var baseCurrency: string = process.env.BASE_CURRENCY || 'USD';
+var baseCurrencyAlts: string[] = (process.env.BASE_CURRENCY_ALTS || '').split(', ');   // enable multiple alternative bases
 var baseCurrencyLower = baseCurrency.toLowerCase();
 var priceSource: string = process.env.PRICE_SOURCE || '';
 var exchangeSource: string = process.env.EXCHANGE_SOURCE || '';
-let exchanges = exchangeSource.split(", ");
+var exchanges = exchangeSource.split(', ');
+var volumeWeight = (process.env.VOLUME_WEIGHT || 'FALSE') == 'TRUE' ? true : false;
+var useSystemTime = (process.env.USE_SYSTEM_TIME || 'FALSE') == 'TRUE' ? true : false;
+var submitBufferMin: number = parseInt(process.env.SUBMIT_BUFFER_MIN || '18');
+
+console.log('Configuration:')
+console.log(`    Network:          ${network}`)
+console.log(`    isTestnet:        ${isTestnet}`)
+console.log(`    baseCurrency      ${baseCurrency     }`);
+console.log(`    baseCurrencyAlts  ${baseCurrencyAlts }`);
+console.log(`    priceSource       ${priceSource      }`);
+console.log(`    exchanges         ${exchanges        }`); 
+console.log(`    volumeWeight      ${volumeWeight     }`);
+console.log(`    useSystemTime     ${useSystemTime    }`);
+console.log(`    submitBufferMin   ${submitBufferMin  }`);
 
 /*
     Helper Functions
@@ -80,7 +93,6 @@ let exchanges = exchangeSource.split(", ");
 // So this could be off by around 2.6 seconds (plus some extra consensus time sync error)
 // Returns UNIX time in seconds 
 // const useSystemTime = true;
-const useSystemTime = false;
 // System time on Google Cloud Compute should be pretty accurate
 // Source 1: https://morganpeat.github.io/cloudmigration/2019/02/01/time-sync-on-cloud-vms-2.html
 // Source 2: https://cloud.google.com/compute/docs/instances/managing-instances#configure-ntp
@@ -221,7 +233,6 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
 // https://github.com/ccxt/ccxt
 // https://ccxt.readthedocs.io/en/latest/manual.html#price-tickers
 // list of exchanges: https://ccxt.readthedocs.io/en/latest/manual.html#exchanges
-var volumeWeight = false;
 async function getPricesCCXT(assets: string[]): Promise<number[]>{
     // let   fetchTargets: any[] =  [];
     // exchanges.forEach(element => {
@@ -235,18 +246,18 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         process.exit(1);
     }
     var string = "";
-        exchanges.forEach(function(element){
-            string += element + " ";
-        });
-        console.log("Ex Src: ", string);
+    exchanges.forEach(function(element){
+        string += element + " ";
+    });
+    console.log("Ex Src: ", string);
     let exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
 
     // let sym = assets[0];
     // let ticker = [sym, baseCurrency].join('/');
 
-    let baseCurrency = 'USDT';
+    // let baseCurrency = 'USDT';
     // let baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
-    let baseCurrencyAlts = [];   // enable multiple alternative bases
+    // let baseCurrencyAlts = [];   // enable multiple alternative bases
     let basesCombined = [baseCurrency, ...baseCurrencyAlts];
     // let baseCurrencyAlts = ['USDT',];   // enable multiple alternative bases
     // Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
@@ -275,16 +286,15 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         const pxPromises: any[] = [];
         const singlePxPromises: any[] = [];
         for (let i = 0; i < exchangesObjs.length; i++) {
-            if(exchangesObjs[i].has[`fetchTickers`])
+            if (exchangesObjs[i].has[`fetchTickers`])
                 pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
-            else if(exchangesObjs[i].id.toLowerCase() == `coinbasepro`)
+            else if (exchangesObjs[i].id.toLowerCase() == `coinbasepro`)
             {
-                for(let j = 0; j<tickersFull.length; j++)
+                for(let j = 0; j < tickersFull.length; j++)
                 {
-               
                     try
                     {
-                    formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
+                        formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
                     }
                     catch(err: unknown){
                         if (err instanceof Error) {
@@ -681,7 +691,7 @@ async function main() {
         const transactionObject = {
                 chainId: 19,
                 nonce: web3.utils.toHex(transactionNonce),
-                gasLimit: web3.utils.toHex(2000000),
+                gasLimit: web3.utils.toHex(8000000),
                 gasPrice: web3.utils.toHex(gasPrice*1.2),
                 value: 0,
                 to: voterWhitelister.options.address,
@@ -768,7 +778,7 @@ async function main() {
     // Should be based on when others submit their prices to make sure we're as close as possible to them
     // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
     var submitBuffer = 18;              // Initial buffer for how many seconds before end of epoch we should start submission
-    var submitBufferMin = 18;           // Minimum buffer
+    // var submitBufferMin = 18;           // Minimum buffer
     var submitTimes: Number[] = [];     // Record recent times to measure how much buffer we need
     var submitBufferStd = 3;            // How many stds (normal)
     // var submitBufferDecay = 0.999;      // Decay factor on each loop
