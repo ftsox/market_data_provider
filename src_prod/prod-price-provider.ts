@@ -884,8 +884,10 @@ async function main() {
             console.log(`\tFirst Provider timestamp:      ${Date()}`); 
 
             result.push(tx);
-            result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
-            console.log(`\tSecond Provider timestamp:     ${Date()}`); 
+            if (web3._provider.host != web3_backup._provider.host) {
+                result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+                console.log(`\tSecond Provider timestamp:     ${Date()}`); 
+            }
             tx.once('transactionHash',  async hash => {
                 console.log("SubmitPriceHash txHash: ", hash);
             })
@@ -1005,7 +1007,9 @@ async function main() {
                 // function was called
                 const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
                 result.push(tx);
-                result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+                if (web3._provider.host != web3_backup._provider.host) {
+                    result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+                }
                 tx.once('transactionHash',  async hash => {
                     console.log("txHash: ", hash);
                 })
