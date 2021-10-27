@@ -28,6 +28,7 @@ Then setup an `.env` file following `.env example` with the following:
 - Gmail access credentials ([instructions](https://support.google.com/accounts/answer/185833?p=InvalidSecondFactor&visit_id=637687407469912796-3308787284&rd=1))
 and call `source .env` in your terminal.
 - Email list for error messages
+- If CCXT is the price source, then you must fill in your exchanges source/s of choice in the following format: `EXCHANGE_SOURCE = "coinbasepro, binance, ftx, huobi, kucoin, gateio, okex"` this allows for dynamic source selection during initialization
 
 To run
 ```

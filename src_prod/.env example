@@ -2,7 +2,8 @@ CC_API_KEY='YOUR KEY HERE'
 COINAPI_KEY='YOUR KEY HERE'
 CMC_PRO_API_KEY='YOUR KEY HERE'
 # Price Source Options: CCXT, CMC, CRYPTOCOMPARE, COINAPI, COINGECKO
-PRICE_SOURCE='CMC'
+PRICE_SOURCE='CCXT'
+EXCHANGE_SOURCE = "coinbasepro, binance, ftx, huobi, kucoin, gateio, okex"
 RPC_NODE_URL='http://IP_ADDRESS:9650/ext/bc/C/rpc' # Reference: https://gitlab.com/flarenetwork/node-config
 FTSO_PRIVATE_KEY='YOUR KEY HERE'
 GMAIL_USER=gmail_name_without_@gmail.com
@@ -10,3 +11,8 @@ GMAIL_PASSWORD=gmail_app_password
 ERROR_MAIL_LIST="email@example.com,email2@gmail.com"
 # Network options: localhost, songbird, flare
 NETWORK='songbird'
+BASE_CURRENCY='USD'
+BASE_CURRENCY_ALTS='USDT, BTC'
+VOLUME_WEIGHT='TRUE'
+USE_SYSTEM_TIME='TRUE'
+SUBMIT_BUFFER_MIN=18
