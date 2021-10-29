@@ -273,7 +273,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
     // [][] -> ['XRP/USDT`, `LTC/USDT` ...][`XRP/BTC`, `LTC/BTC` ...]
     let tickersBaseAlts = baseCurrencyAlts.map(baseCurrencyAlt => assets.map((sym) => `${sym}/${baseCurrencyAlt}`));
     //[] -> [XRP/USDT`, `LTC/USDT`..., `XRP/BTC`, `LTC/BTC`...]
-    let tickersBaseAltsFlat = tickersBaseAlts.reduce((partial_list, a) => [...partial_list, ...a], [])
+    let tickersBaseAltsFlat = tickersBaseAlts.reduce((partial_list, a) => [...partial_list, ...a], []);
     //[] -> [`USDT/USD`, `USDT/BTC`]
     let tickersAltsToBase = baseCurrencyAlts.map((alt) => `${alt}/${baseCurrency}`);
     // let baseCurrencyAltToBaseCurrencyTicker = `${baseCurrencyAlt}/${baseCurrency}`;
@@ -370,7 +370,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
                 if (volumeWeight) {
                     volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
                 } else {
-                    volsBase.push(...(new Array(pxsEx[ticker].length).fill(1)));
+                    volsBase.push(...(new Array((pxsEx[ticker] || []).length).fill(1)));
                 }
             }
             return math.dot(pxsBase, volsBase) / math.sum(volsBase);
