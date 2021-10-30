@@ -890,14 +890,14 @@ async function main() {
             // raw transaction string may be available in .raw or 
             // .rawTransaction depending on which signTransaction
             // function was called
-            console.log(`\tSubmitting price hashes:       ${Date()}`)
+            console.log(`\tPID ${process.pid} Submitting price hashes:       ${Date()}`)
             const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
-            console.log(`\tFirst Provider timestamp:      ${Date()}`); 
+            console.log(`\tPID ${process.pid} First Provider timestamp:      ${Date()}`); 
 
             result.push(tx);
             if (web3._provider.host != web3_backup._provider.host) {
                 result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
-                console.log(`\tSecond Provider timestamp:     ${Date()}`); 
+                console.log(`\tPID ${process.pid} Second Provider timestamp:     ${Date()}`); 
             }
             tx.once('transactionHash',  async hash => {
                 console.log("SubmitPriceHash txHash: ", hash);
