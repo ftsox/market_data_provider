@@ -76,7 +76,7 @@ var exchangeSource: string = process.env.EXCHANGE_SOURCE || '';
 var exchanges = exchangeSource.split(', ');
 var volumeWeight = (process.env.VOLUME_WEIGHT || 'FALSE') == 'TRUE' ? true : false;
 var useSystemTime = (process.env.USE_SYSTEM_TIME || 'FALSE') == 'TRUE' ? true : false;
-var constantBuffer = (process.env.CONSTANT_BUFFER || 'TRUE') == 'TRUE' ? true : false;
+var constantBuffer = (process.env.CONSTANT_BUFFER || 'FALSE') == 'TRUE' ? true : false;
 var submitBufferMin: number = parseInt(process.env.SUBMIT_BUFFER_MIN || '18');
 
 console.log('Configuration:')
