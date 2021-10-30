@@ -76,6 +76,7 @@ var exchangeSource: string = process.env.EXCHANGE_SOURCE || '';
 var exchanges = exchangeSource.split(', ');
 var volumeWeight = (process.env.VOLUME_WEIGHT || 'FALSE') == 'TRUE' ? true : false;
 var useSystemTime = (process.env.USE_SYSTEM_TIME || 'FALSE') == 'TRUE' ? true : false;
+var constantBuffer = (process.env.CONSTANT_BUFFER || 'TRUE') == 'TRUE' ? true : false;
 var submitBufferMin: number = parseInt(process.env.SUBMIT_BUFFER_MIN || '18');
 
 console.log('Configuration:')
@@ -87,6 +88,7 @@ console.log(`    priceSource       ${priceSource      }`);
 console.log(`    exchanges         ${exchanges        }`); 
 console.log(`    volumeWeight      ${volumeWeight     }`);
 console.log(`    useSystemTime     ${useSystemTime    }`);
+console.log(`    constantBuffer    ${constantBuffer   }`);
 console.log(`    submitBufferMin   ${submitBufferMin  }`);
 
 /*
@@ -949,7 +951,7 @@ async function main() {
         console.log(`\nSubmit Buffer update:`);
         console.log(`   Prev: ${submitBuffer}`);
         // require a minimum sample size for updates
-        if (nSubmitTimes > submitBufferBurnIn) {
+        if (nSubmitTimes > submitBufferBurnIn && !constantBuffer) {
             // new submitBuffer in seconds
             submitBuffer = submitBufferBase + submitMean + submitBufferStd*submitStd;
             if(submitBuffer < submitBufferMin)

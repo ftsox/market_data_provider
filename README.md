@@ -29,6 +29,13 @@ Then setup an `.env` file following `.env example` with the following:
 and call `source .env` in your terminal.
 - Email list for error messages
 - If CCXT is the price source, then you must fill in your exchanges source/s of choice in the following format: `EXCHANGE_SOURCE = "coinbasepro, binance, ftx, huobi, kucoin, gateio, okex"` this allows for dynamic source selection during initialization
+- BASE_CURRENCY: the base currency, e.g. USD
+- BASE_CURRENCY_ALTS (comma separated list with space): alternative base pairs that will be converted to BASE_CURRENCY
+- VOLUME_WEIGHT: whether to weight prices from different sources by reported volume
+- USE_SYSTEM_TIME: whether to use system time or blockchain time (TRUE/FALSE)
+- SUBMIT_BUFFER_MIN: minimum submit buffer, or, if CONSTANT_BUFFER='TRUE', then the constant submission buffer
+- CONSTANT_BUFFER: whether to use a constant or dynamic buffer
+
 
 To run
 ```
