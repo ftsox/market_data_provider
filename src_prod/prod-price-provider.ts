@@ -785,7 +785,7 @@ async function main() {
     // Need a bit of buffer to let the other function calls return
     // Should be based on when others submit their prices to make sure we're as close as possible to them
     // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
-    var submitBuffer = 18;              // Initial buffer for how many seconds before end of epoch we should start submission
+    var submitBuffer = submitBufferMin;              // Initial buffer for how many seconds before end of epoch we should start submission
     // var submitBufferMin = 18;           // Minimum buffer
     var submitTimes: Number[] = [];     // Record recent times to measure how much buffer we need
     var submitBufferStd = 3;            // How many stds (normal)
@@ -925,9 +925,9 @@ async function main() {
             // send mail with defined transport object
             try {
                 let info = await transporter.sendMail({
-                    from: '"FTSO Monitor" <cv40067@gmail.com>',       // sender address
-                    to: "cv40067@gmail.com, mczochowski@gmail.com",                // list of receivers
-                    subject: `FTSO error for ${priceProviderAccount.address}`,                           // Subject line
+                    from: `"FTSO Monitor" <${process.env.GMAIL_USER}@gmail.com>`,                      // sender address
+                    to: `${process.env.ERROR_MAIL_LIST}`,                                              // list of receivers
+                    subject: `FTSO error for ${priceProviderAccount.address}`,                         // Subject line
                     text: `Price hash submission error for ${priceProviderAccount.address}`,        // plain text body
                     html: `Price hash submission error for <b>${priceProviderAccount.address}</b>`, // html body
                 });
