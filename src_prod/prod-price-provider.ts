@@ -13,6 +13,7 @@ const math = require("mathjs");
 const nodemailer = require("nodemailer");
 // @ts-ignore
 import { time } from '@openzeppelin/test-helpers';  // TODO: get rid of this
+import { exit } from 'process';
 
 
 /*
@@ -236,6 +237,11 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
     }
 }
 
+function populateQuoteVolume(tickerData: any): any{
+    if(tickerData.quoteVolume == null)
+    tickerData.quoteVolume = tickerData.baseVolume * ((tickerData.bid + tickerData.ask) / 2);
+    return tickerData;
+}
 
 // CCXT
 // https://github.com/ccxt/ccxt
@@ -288,7 +294,6 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
     let pxsEx = {};     // arrays of prices for each ticker
     let volsEx = {};    // arrays of volumes for each ticker (in base pair numeraire)
     let formattedSingleRawData = {};
-    
     try {
         const allRawData: any[] = [];
         const pxPromises: any[] = [];
@@ -302,7 +307,10 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
                 {
                     try
                     {
-                        formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
+                        if(tickersFull[j] != "USD/USDT" && tickersFull[j] != "USDT/USD")
+                            formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
+                        else
+                            formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j]);   
                     }
                     catch(err: unknown){
                         if (err instanceof Error) {
@@ -324,6 +332,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
 
         // Resolve those Promises concurrently
         // This takes by far the longest time in this function, roughly 2 to 2.5 seconds
+    
         let tempData = await Promise.all(pxPromises);
         tempData.map(x => allRawData.push(x));
         
@@ -344,7 +353,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
                 );
                 volsEx[tickerSymbol] = volsEx[tickerSymbol] || [];
                 volsEx[tickerSymbol].push(
-                    allRawData[i][tickerSymbol].quoteVolume || 0
+                    populateQuoteVolume(allRawData[i][tickerSymbol]).quoteVolume|| 0
                 );
             });
         };
@@ -353,8 +362,8 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         // Calculate weighted average
         // Could do this recursively (e.g. use BTC/USDT and BTC/USD to calculate BTC/USD rate), but for now keep it simple
         let baseAltsPxs = tickersAltsToBase.map((altTicker, idx) => 
-            math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker])
-        );
+                math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker]));
+
         let baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
         baseAltPxsMap.set(baseCurrency, 1);
 
@@ -747,7 +756,7 @@ async function main() {
     console.log(`\tfirstEpochStartTime: ${new Date(firstEpochStartTime * 1000)}`);
     console.log(`\tsubmitPeriod (secs): ${submitPeriod}`);
     console.log(`\trevealPeriod (secs): ${revealPeriod}`);
-    
+
     const checkPrices = true;
     if (checkPrices) {
         // Test: get prices for symbols
@@ -881,14 +890,14 @@ async function main() {
             // raw transaction string may be available in .raw or 
             // .rawTransaction depending on which signTransaction
             // function was called
-            console.log(`\tSubmitting price hashes:       ${Date()}`)
+            console.log(`\tPID ${process.pid} Submitting price hashes:       ${Date()}`)
             const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
-            console.log(`\tFirst Provider timestamp:      ${Date()}`); 
+            console.log(`\tPID ${process.pid} First Provider timestamp:      ${Date()}`); 
 
             result.push(tx);
             if (web3._provider.host != web3_backup._provider.host) {
                 result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
-                console.log(`\tSecond Provider timestamp:     ${Date()}`); 
+                console.log(`\tPID ${process.pid} Second Provider timestamp:     ${Date()}`); 
             }
             tx.once('transactionHash',  async hash => {
                 console.log("SubmitPriceHash txHash: ", hash);

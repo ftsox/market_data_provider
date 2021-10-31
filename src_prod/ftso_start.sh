@@ -12,6 +12,7 @@ else
     fi
 fi
 echo $(date), "Starting FTSO"
+sleep 5s
 node ./prod-price-provider.js  >> $DIR/$FILE 2>&1 & echo FTSO started with PID $! 
 
 while :

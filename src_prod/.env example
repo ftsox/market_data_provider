@@ -12,6 +12,7 @@ ERROR_MAIL_LIST="email@example.com,email2@gmail.com"
 # Network options: localhost, songbird, flare
 NETWORK='songbird'
 BASE_CURRENCY='USD'
+#If USD alt is used then you must have one of the following source: COINBASEPRO, FTX
 BASE_CURRENCY_ALTS='USDT, BTC'
 VOLUME_WEIGHT='TRUE'
 USE_SYSTEM_TIME='TRUE'
