@@ -366,6 +366,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
 
         let baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
         baseAltPxsMap.set(baseCurrency, 1);
+        baseAltPxsMap.set('USDT', 1);
 
         // Get to volume weighted price for each asset
         // TODO: alternative 1: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
