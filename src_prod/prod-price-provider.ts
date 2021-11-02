@@ -371,24 +371,59 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         // Get to volume weighted price for each asset
         // TODO: alternative 1: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
         // TODO: add an exchange-level weighting factor, s.t. weight = volume * exchange_factor, to reflect exchange quality of volume
-        let prices = assets.map((asset, idx) => {
+        let prices = [];
+        let realvolumeWeight = volumeWeight;
+        for(let j = 0; j < assets.length; j++)
+        {
             let pxsBase = [];
             let volsBase = [];
+            volumeWeight = realvolumeWeight;
             // convert each set of quotes for each base to global base (USD)
             for (let base of basesCombined) {
-                let ticker = `${asset}/${base}`;
+                let ticker = `${assets[j]}/${base}`;
                 // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
-                pxsBase.push (...math.dotMultiply(pxsEx[ticker] || [], baseAltPxsMap.get(base)));
+                if(pxsEx[ticker] == null)
+                {
+                    //speical handling for tickers goes here
+                    if(assets[j] == 'DGB')
+                    {
+                        let asset_array = []
+                        asset_array.push(assets[j]);
+                        let temp =  await getPricesCryptoCompare(asset_array);
+                        pxsBase.push(temp[0]);
+                        volsBase.push(...(new Array(1).fill(1)));       
+                        continue;        
+                    }
+                    //add more speical pair handling
+                    else
+                    {
+                        console.log(ticker, "has no price nor special handling, defaulting to cryptocompare (bad)");
+                        let asset_array = []
+                        asset_array.push(assets[j]);
+                        let temp =  await getPricesCryptoCompare(asset_array);
+                        pxsBase.push(temp[0]);
+                        volsBase.push(...(new Array(1).fill(1)));    
+                        continue;           
+                    }
+                }
+                else if((volsEx[ticker]  == null && volumeWeight) || 
+                    (pxsEx[ticker].length != volsEx[ticker].length))
+                {
+                    //if we reach here that means we have price but no volume.
+                    console.log(ticker, "has no volume or lengths dont match");
+                    volumeWeight = false;
+                }
+                pxsBase.push (...math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base)));
                 if (volumeWeight) {
-                    volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
+                    volsBase.push(...math.dotMultiply(volsEx[ticker] , baseAltPxsMap.get(base)));
                 } else {
-                    volsBase.push(...(new Array((pxsEx[ticker] || []).length).fill(1)));
+                    volsBase.push(...(new Array((pxsEx[ticker] ).length).fill(1)));
                 }
             }
-            return math.dot(pxsBase, volsBase) / math.sum(volsBase);
-        });
+            prices.push( math.dot(pxsBase, volsBase) / math.sum(volsBase));
+        }
+        
         return prices;
-
         // // TODO: alternative 2: allRawData.map()
         // let quotesFlat = allRawData.map((exRets, i) => {
         //     return Object.entries(exRets).map(([ticker, quote], j) => {
