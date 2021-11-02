@@ -154,7 +154,7 @@ async function getTimeWTA(): Promise<number>{
 // console.log(`Average diff: ${math.mean(timeDiffs)}`);
 
 
-export function submitPriceHash(price: number, random: number, address: string, web3: any): string {
+export function submitPriceHash(price: number, random: string, address: string, web3: any): string {
     return ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode([ "uint256", "uint256", "address" ], [price.toString(), random.toString(), address]))
 }
 
@@ -590,13 +590,6 @@ async function getPricesCoinGecko(assets: string[]): Promise<number[]>{
     }    
 }
 
-
-// Random generation for hashing of prices to submit in commit phase
-function getRandom(epochId: number, asset: string): number{
-    return Math.floor(Math.random() * 1e10);
-}
-
-
 /*
     Setup
 */
@@ -871,7 +864,7 @@ async function main() {
         console.log(`Start submit for epoch ${currentEpoch}`);
         console.log(`\tStart getting prices:    ${Date()}`); 
         // Prepare prices and randoms
-        const randoms = symbols.map(sym => getRandom(currentEpoch, sym as string)); 
+        const randoms = symbols.map(sym => web3.utils.randomHex(32)); 
 
         // const prices = symbols.map(sym => getPrice(currentEpoch, sym)); // Just a mock here, real price should not be random
         const prices = await getPrices(currentEpoch, symbols as string[], decimals, priceSource);
