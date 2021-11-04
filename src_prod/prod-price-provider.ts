@@ -53,11 +53,17 @@ if (isTestnet) {
     privKey = process.env.FTSO_PRIVATE_KEY ?? '';
 }
 
+
+// Web3Provider docs: https://github.com/ChainSafe/web3.js/tree/1.x/packages/web3-providers-http#usage
+const web3ProviderOptions = {
+    // Need a lower timeout than the default of 750 seconds in case it hangs
+    timeout: 60 * 1000, // milliseconds,
+};
 const web3 = new Web3(
-    new Web3.providers.HttpProvider(URL0)
+    new Web3.providers.HttpProvider(URL0, web3ProviderOptions)
 );
 const web3_backup = new Web3(
-    new Web3.providers.HttpProvider(URL1)
+    new Web3.providers.HttpProvider(URL1, web3ProviderOptions)
 );
 
 
@@ -238,8 +244,9 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
 }
 
 function populateQuoteVolume(tickerData: any): any{
-    if(tickerData.quoteVolume == null)
-    tickerData.quoteVolume = tickerData.baseVolume * ((tickerData.bid + tickerData.ask) / 2);
+    if(tickerData.quoteVolume == null) {
+        tickerData.quoteVolume = tickerData.baseVolume * ((tickerData.bid + tickerData.ask) / 2);
+    }
     return tickerData;
 }
 
@@ -353,7 +360,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
                 );
                 volsEx[tickerSymbol] = volsEx[tickerSymbol] || [];
                 volsEx[tickerSymbol].push(
-                    populateQuoteVolume(allRawData[i][tickerSymbol]).quoteVolume|| 0
+                    populateQuoteVolume(allRawData[i][tickerSymbol]).quoteVolume || 0
                 );
             });
         };
@@ -362,7 +369,8 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         // Calculate weighted average
         // Could do this recursively (e.g. use BTC/USDT and BTC/USD to calculate BTC/USD rate), but for now keep it simple
         let baseAltsPxs = tickersAltsToBase.map((altTicker, idx) => 
-                math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker]));
+            math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker])
+        );
 
         let baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
         baseAltPxsMap.set(baseCurrency, 1);
