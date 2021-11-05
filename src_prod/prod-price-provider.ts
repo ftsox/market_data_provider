@@ -91,6 +91,8 @@ console.log(`    volumeWeight      ${volumeWeight     }`);
 console.log(`    useSystemTime     ${useSystemTime    }`);
 console.log(`    constantBuffer    ${constantBuffer   }`);
 console.log(`    submitBufferMin   ${submitBufferMin  }`);
+console.log(`    URL0:             ${URL0}`);
+console.log(`    URL1:             ${URL1}`);
 
 /*
     Helper Functions
