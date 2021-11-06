@@ -53,11 +53,17 @@ if (isTestnet) {
     privKey = process.env.FTSO_PRIVATE_KEY ?? '';
 }
 
+
+// Web3Provider docs: https://github.com/ChainSafe/web3.js/tree/1.x/packages/web3-providers-http#usage
+const web3ProviderOptions = {
+    // Need a lower timeout than the default of 750 seconds in case it hangs
+    timeout: 60 * 1000, // milliseconds,
+};
 const web3 = new Web3(
-    new Web3.providers.HttpProvider(URL0)
+    new Web3.providers.HttpProvider(URL0, web3ProviderOptions)
 );
 const web3_backup = new Web3(
-    new Web3.providers.HttpProvider(URL1)
+    new Web3.providers.HttpProvider(URL1, web3ProviderOptions)
 );
 
 
@@ -79,20 +85,22 @@ var volumeWeight = (process.env.VOLUME_WEIGHT || 'FALSE') == 'TRUE' ? true : fal
 var useSystemTime = (process.env.USE_SYSTEM_TIME || 'FALSE') == 'TRUE' ? true : false;
 var constantBuffer = (process.env.CONSTANT_BUFFER || 'FALSE') == 'TRUE' ? true : false;
 var submitBufferMin: number = parseInt(process.env.SUBMIT_BUFFER_MIN || '18');
+var convertUsdt = (process.env.CONVERT_USDT || 'FALSE') == 'TRUE' ? true : false;
 
 console.log('Configuration:')
 console.log(`    Network:          ${network}`)
+console.log(`    Node URL0:        ${URL0}`)
+console.log(`    Node URL1:        ${URL1}`)
 console.log(`    isTestnet:        ${isTestnet}`)
 console.log(`    baseCurrency      ${baseCurrency     }`);
 console.log(`    baseCurrencyAlts  ${baseCurrencyAlts }`);
+console.log(`    convertUsdt       ${convertUsdt      }`);
 console.log(`    priceSource       ${priceSource      }`);
 console.log(`    exchanges         ${exchanges        }`); 
 console.log(`    volumeWeight      ${volumeWeight     }`);
 console.log(`    useSystemTime     ${useSystemTime    }`);
 console.log(`    constantBuffer    ${constantBuffer   }`);
 console.log(`    submitBufferMin   ${submitBufferMin  }`);
-console.log(`    URL0:             ${URL0}`);
-console.log(`    URL1:             ${URL1}`);
 
 /*
     Helper Functions
@@ -240,8 +248,9 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
 }
 
 function populateQuoteVolume(tickerData: any): any{
-    if(tickerData.quoteVolume == null)
-    tickerData.quoteVolume = tickerData.baseVolume * ((tickerData.bid + tickerData.ask) / 2);
+    if(tickerData.quoteVolume == null) {
+        tickerData.quoteVolume = tickerData.baseVolume * ((tickerData.bid + tickerData.ask) / 2);
+    }
     return tickerData;
 }
 
@@ -355,7 +364,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
                 );
                 volsEx[tickerSymbol] = volsEx[tickerSymbol] || [];
                 volsEx[tickerSymbol].push(
-                    populateQuoteVolume(allRawData[i][tickerSymbol]).quoteVolume|| 0
+                    populateQuoteVolume(allRawData[i][tickerSymbol]).quoteVolume || 0
                 );
             });
         };
@@ -364,68 +373,88 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         // Calculate weighted average
         // Could do this recursively (e.g. use BTC/USDT and BTC/USD to calculate BTC/USD rate), but for now keep it simple
         let baseAltsPxs = tickersAltsToBase.map((altTicker, idx) => 
-                math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker]));
+                math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker])
+        );
 
         let baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
         baseAltPxsMap.set(baseCurrency, 1);
-        baseAltPxsMap.set('USDT', 1);
+        if (!convertUsdt) {
+            baseAltPxsMap.set('USDT', 1);
+        }
 
         // Get to volume weighted price for each asset
         // TODO: alternative 1: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
         // TODO: add an exchange-level weighting factor, s.t. weight = volume * exchange_factor, to reflect exchange quality of volume
-        let prices = [];
-        let realvolumeWeight = volumeWeight;
-        for(let j = 0; j < assets.length; j++)
-        {
+        let prices = assets.map((asset, idx) => {
             let pxsBase = [];
             let volsBase = [];
-            volumeWeight = realvolumeWeight;
             // convert each set of quotes for each base to global base (USD)
             for (let base of basesCombined) {
-                let ticker = `${assets[j]}/${base}`;
+                let ticker = `${asset}/${base}`;
                 // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
-                if(pxsEx[ticker] == null)
-                {
-                    //speical handling for tickers goes here
-                    if(assets[j] == 'DGB')
-                    {
-                        let asset_array = []
-                        asset_array.push(assets[j]);
-                        let temp =  await getPricesCryptoCompare(asset_array);
-                        pxsBase.push(temp[0]);
-                        volsBase.push(...(new Array(1).fill(1)));       
-                        continue;        
-                    }
-                    //add more speical pair handling
-                    else
-                    {
-                        console.log(ticker, "has no price nor special handling, defaulting to cryptocompare (bad)");
-                        let asset_array = []
-                        asset_array.push(assets[j]);
-                        let temp =  await getPricesCryptoCompare(asset_array);
-                        pxsBase.push(temp[0]);
-                        volsBase.push(...(new Array(1).fill(1)));    
-                        continue;           
-                    }
-                }
-                else if((volsEx[ticker]  == null && volumeWeight) || 
-                    (pxsEx[ticker].length != volsEx[ticker].length))
-                {
-                    //if we reach here that means we have price but no volume.
-                    console.log(ticker, "has no volume or lengths dont match");
-                    volumeWeight = false;
-                }
-                pxsBase.push (...math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base)));
+                pxsBase.push (...math.dotMultiply(pxsEx[ticker] || [], baseAltPxsMap.get(base)));
                 if (volumeWeight) {
-                    volsBase.push(...math.dotMultiply(volsEx[ticker] , baseAltPxsMap.get(base)));
+                    volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
                 } else {
-                    volsBase.push(...(new Array((pxsEx[ticker] ).length).fill(1)));
+                    volsBase.push(...(new Array((pxsEx[ticker] || []).length).fill(1)));
                 }
             }
-            prices.push( math.dot(pxsBase, volsBase) / math.sum(volsBase));
-        }
-        
+            return math.dot(pxsBase, volsBase) / math.sum(volsBase);
+        });
         return prices;
+
+
+
+
+        // // let prices = [];
+        // // for(let j = 0; j < assets.length; j++) {
+        // //     let pxsBase = [];
+        // //     let volsBase = [];
+        // //     // convert each set of quotes for each base to global base (USD)
+        // //     for (let base of basesCombined) {
+        // //         let loopvolumeWeight = volumeWeight;
+        // //         let ticker = `${assets[j]}/${base}`;
+        // //         // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
+        // //         if (pxsEx[ticker] == null) {
+        // //             //speical handling for tickers goes here
+        // //             if (assets[j] == 'DGB') {
+        // //                 let asset_array = []
+        // //                 asset_array.push(assets[j]);
+        // //                 let temp =  await getPricesCryptoCompare(asset_array);
+        // //                 pxsBase.push(temp[0]);
+        // //                 volsBase.push(...(new Array(1).fill(1)));       
+        // //                 continue;        
+        // //             } else {
+        // //                 //add more speical pair handling
+        // //                 console.log(ticker, "has no price nor special handling, defaulting to cryptocompare (bad)");
+        // //                 let asset_array = []
+        // //                 asset_array.push(assets[j]);
+        // //                 let temp =  await getPricesCryptoCompare(asset_array);
+        // //                 pxsBase.push(temp[0]);
+        // //                 volsBase.push(...(new Array(1).fill(1)));    
+        // //                 continue;           
+        // //             }
+        // //         }
+        // //         else if (
+        // //                 (volsEx[ticker] == null && loopvolumeWeight) || 
+        // //                 (pxsEx[ticker].length != volsEx[ticker].length)
+        // //             )
+        // //         {
+        // //             //if we reach here that means we have price but no volume.
+        // //             console.log(ticker, "has no volume or lengths dont match");
+        // //             loopvolumeWeight = false;
+        // //         }
+        // //         pxsBase.push (...math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base)));
+        // //         if (loopvolumeWeight) {
+        // //             volsBase.push(...math.dotMultiply(volsEx[ticker] , baseAltPxsMap.get(base)));
+        // //         } else {
+        // //             volsBase.push(...(new Array((pxsEx[ticker] ).length).fill(1)));
+        // //         }
+        // //     }
+        // //     prices.push( math.dot(pxsBase, volsBase) / math.sum(volsBase));
+        // // }
+        
+        // return prices;
         // // TODO: alternative 2: allRawData.map()
         // let quotesFlat = allRawData.map((exRets, i) => {
         //     return Object.entries(exRets).map(([ticker, quote], j) => {
@@ -591,6 +620,14 @@ async function getPricesCoinGecko(assets: string[]): Promise<number[]>{
         return assets.map((sym, i) => -1);
     }    
 }
+
+
+// Random generation for hashing of prices to submit in commit phase
+function getRandom(epochId: number, asset: string): string{
+    // return Math.floor(Math.random() * 1e10);
+    return web3.utils.randomHex(32);
+}
+
 
 /*
     Setup
@@ -868,7 +905,8 @@ async function main() {
         console.log(`Start submit for epoch ${currentEpoch}`);
         console.log(`\tStart getting prices:    ${Date()}`); 
         // Prepare prices and randoms
-        const randoms = symbols.map(sym => web3.utils.randomHex(32)); 
+        // const randoms = symbols.map(sym => web3.utils.randomHex(32)); 
+        const randoms = symbols.map(sym => getRandom(currentEpoch, sym as string));
 
         // const prices = symbols.map(sym => getPrice(currentEpoch, sym)); // Just a mock here, real price should not be random
         const prices = await getPrices(currentEpoch, symbols as string[], decimals, priceSource);
@@ -1034,6 +1072,7 @@ async function main() {
             try {
                 
                 // const exchangeEncodeABI = priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).encodeABI();
+                // var gasLimit = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: priceProviderAccount.address});
                 // var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
                 // var gasPrice = await web3.eth.getGasPrice();
                 // const transactionObject = {
