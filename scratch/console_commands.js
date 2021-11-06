@@ -779,7 +779,7 @@ math = require("mathjs");
 baseCurrency = 'USD';
 symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
 assets = symbols
-exchanges = ['binance','ftx','huobi','kucoin','gateio'];
+exchanges = ['coinbasepro', 'binance','ftx','huobi','kucoin','gateio'];
 
 
 // let   fetchTargets: any[] =  [];
@@ -799,13 +799,14 @@ exchanges.forEach(function(element){
 });
 console.log("Ex Src: ", string);
 exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
+exchangesMarkets = await Promise.all(exchangesObjs.map((ex) => ex.load_markets()))
 
 // let sym = assets[0];
 // let ticker = [sym, baseCurrency].join('/');
 
 baseCurrency = 'USD';
-baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
-// let baseCurrencyAlts = [];   // enable multiple alternative bases
+// baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
+baseCurrencyAlts = [];   // enable multiple alternative bases
 basesCombined = [baseCurrency, ...baseCurrencyAlts];
 // baseCurrencyAlts = ['USDT',];   // enable multiple alternative bases
 // Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
@@ -833,48 +834,90 @@ formattedSingleRawData = {};
 allRawData = [];
 pxPromises = [];
 singlePxPromises = [];
-// for (i = 0; i < exchangesObjs.length; i++) {
-//     pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
-// }
-for (i = 0; i < exchangesObjs.length; i++) {
-    if (exchangesObjs[i].has[`fetchTickers`])
-        pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
-    else if (exchangesObjs[i].id.toLowerCase() == `coinbasepro`)
-    {
-        for(j = 0; j < tickersFull.length; j++)
-        {
-            try
-            {
-                if(tickersFull[j] != "USD/USDT" && tickersFull[j] != "USDT/USD")
-                    formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
-                else
-                    formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j]);   
-            }
-            catch(err){
-                if (err instanceof Error) {
-                    if(err.name!='BadSymbol')
-                        console.log(err); //ignore BadSymbol
-                    }
-            }
-
-        }
-        allRawData.push(formattedSingleRawData);
-        
-    }
-    
-    else
-        console.error("Unhandled exchange: ", exchangesObjs[i].name);
-}
 // Get async Promise API call objects
-//pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
+bulkFetchIdxs = exchangesObjs.map((ex, idx) => ex.has[`fetchTickers`] || false);
+// Bulk fetch exchanges
+bulkTickerExs = exchangesObjs.filter((ex, i) => bulkFetchIdxs[i])
+bulkPxPromises = bulkTickerExs.map((ex, idx) => ex.fetchTickers(tickersFull));
 
-// Resolve those Promises concurrently
-// This takes by far the longest time in this function, roughly 2 to 2.5 seconds
+// individual ticker exchanges
+// only do for Coinbase
+// TODO: add more single ticker exchanges, like Kraken
+singleTickerExs = exchangesObjs.filter((ex, i) => !bulkFetchIdxs[i] && ex.id == 'coinbasepro')
+usdTickers = tickersFull.filter((ticker, idx) => ticker.split('/')[1] == 'USD')
+for (singleTickerEx of singleTickerExs) {
+    if (singleTickerEx.id == 'coinbasepro') {
+    // if (singleTickerExs.length > 0) {
+        singleTickerExSupportedTickers = tickersFull.filter((ticker, idx) => singleTickerEx.symbols.includes(ticker))
+        // TODO: this may cause too many request issues, may need to loop individually over each ticker as we did previously
+        // singlePxPromises = singlePxPromises.concat(singleTickerExSupportedTickers.map((ticker, idx) => singleTickerEx.fetchTicker(ticker)))
+        // push rather than concat to have parallel structure as bulkPxPromises
+        singlePxPromises.push(singleTickerExSupportedTickers.map((ticker, idx) => singleTickerEx.fetchTicker(ticker)))
+    }
+}
 
-tempData = await Promise.all(pxPromises);
-tempData.map(x => allRawData.push(x));
+// Note unsupported exchanges
+unsupportedExs = exchangesObjs.filter((ex, i) => !bulkFetchIdxs[i] && ex.id != 'coinbasepro')
+if (unsupportedExs.length > 0) {
+    console.log(`Warning! Unsupported exchanges: ${unsupportedExs.map((ex,idx) => ex.id).join(', ')}`)
+}
 
-// Sort the raw data into various tickers
+// Resolve promises
+bulkPxData = await Promise.all(bulkPxPromises);
+// Assumes only one singlePxDataEx exchange - otherwise will commingle all the singlePxDataEx return prices
+// singlePxDataList = await Promise.all(singlePxPromises);
+// singlePxData = {}
+// singlePxDataList.forEach((quote)=> {singlePxData[quote.symbol] = quote})
+// allRawData = bulkPxData.concat(singlePxData)
+singlePxDataList = await Promise.all(singlePxPromises.map(Promise.all.bind(Promise)));    // Need to resolve array of array of promises
+singlePxData = singlePxDataList.map((exResList, i) => {
+    let exResDict = {};
+    exResList.forEach((quote)=> {exResDict[quote.symbol] = quote});
+    return exResDict;
+});
+allRawData = bulkPxData.concat(singlePxData);
+
+
+
+// for (i = 0; i < exchangesObjs.length; i++) {
+//     if (exchangesObjs[i].has[`fetchTickers`])
+//         pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
+//     else if (exchangesObjs[i].id.toLowerCase() == `coinbasepro`)
+//     {
+//         for (j = 0; j < tickersFull.length; j++)
+//         {
+//             try
+//             {
+//                 if(tickersFull[j] != "USD/USDT" && tickersFull[j] != "USDT/USD")
+//                     formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
+//                 else
+//                     formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j]);   
+//             }
+//             catch(err){
+//                 if (err instanceof Error) {
+//                     if(err.name!='BadSymbol')
+//                         console.log(err); //ignore BadSymbol
+//                     }
+//             }
+
+//         }
+//         allRawData.push(formattedSingleRawData);
+        
+//     }
+    
+//     else
+//         console.error("Unhandled exchange: ", exchangesObjs[i].name);
+// }
+// // Get async Promise API call objects
+// //pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
+
+// // Resolve those Promises concurrently
+// // This takes by far the longest time in this function, roughly 2 to 2.5 seconds
+
+// tempData = await Promise.all(pxPromises);
+// tempData.map(x => allRawData.push(x));
+
+// // Sort the raw data into various tickers
 
 
 function populateQuoteVolume(tickerData) {
@@ -932,7 +975,12 @@ prices = assets.map((asset, idx) => {
             volsBase.push(...(new Array((pxsEx[ticker] || []).length).fill(1)));
         }
     }
-    return math.dot(pxsBase, volsBase) / math.sum(volsBase);
+    if (pxsBase.length == 0) {
+        // no prices for the asset on the given exchanges, return NaN
+        return NaN
+    } else {
+        return math.dot(pxsBase, volsBase) / math.sum(volsBase);
+    }
 });
 
 
@@ -995,7 +1043,7 @@ for(j = 0; j < assets.length; j++) {
 quotesFlat = allRawData.map((exRets, i) => {
     return Object.entries(exRets).map(([ticker, quote], j) => {
         return {
-            'exchangeId': exchangesObjs[i].id,
+            'exchangeId': exchangesObjs[i].id,  // Needs to be mapped to the above
             'ticker': ticker,
             'asset': quote['symbol'].split('/')[0],
             'base': quote['symbol'].split('/')[1], 
@@ -1012,7 +1060,21 @@ quotesFlat = allRawData.map((exRets, i) => {
 populateQuoteVolume(quote)['quoteVolume']
 
 
-//////////
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+// SUBMISSION LOOP
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
 
 
 errorCount = 0;

@@ -258,6 +258,10 @@ function populateQuoteVolume(tickerData: any): any{
 // https://github.com/ccxt/ccxt
 // https://ccxt.readthedocs.io/en/latest/manual.html#price-tickers
 // list of exchanges: https://ccxt.readthedocs.io/en/latest/manual.html#exchanges
+// Initialize bring outside the function to save time each iteration
+// https://ccxt.readthedocs.io/en/latest/manual.html#loading-markets
+var exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
+var exchangesMarkets = (async () => { await Promise.all(exchangesObjs.map((ex) => ex.load_markets())) }) ()
 async function getPricesCCXT(assets: string[]): Promise<number[]>{
     // let   fetchTargets: any[] =  [];
     // exchanges.forEach(element => {
@@ -275,7 +279,6 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         string += element + " ";
     });
     console.log("Ex Src: ", string);
-    let exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
 
     // let sym = assets[0];
     // let ticker = [sym, baseCurrency].join('/');
@@ -304,48 +307,84 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
     
     let pxsEx = {};     // arrays of prices for each ticker
     let volsEx = {};    // arrays of volumes for each ticker (in base pair numeraire)
-    let formattedSingleRawData = {};
+    // let formattedSingleRawData = {};
     try {
-        const allRawData: any[] = [];
-        const pxPromises: any[] = [];
-        const singlePxPromises: any[] = [];
-        for (let i = 0; i < exchangesObjs.length; i++) {
-            if (exchangesObjs[i].has[`fetchTickers`])
-                pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
-            else if (exchangesObjs[i].id.toLowerCase() == `coinbasepro`)
-            {
-                for(let j = 0; j < tickersFull.length; j++)
-                {
-                    try
-                    {
-                        if(tickersFull[j] != "USD/USDT" && tickersFull[j] != "USDT/USD")
-                            formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
-                        else
-                            formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j]);   
-                    }
-                    catch(err: unknown){
-                        if (err instanceof Error) {
-                            if(err.name!='BadSymbol')
-                                console.log(err); //ignore BadSymbol
-                          }
-                    }
+        // let allRawData: any[] = [];
+        // const pxPromises: any[] = [];
+        let bulkPxPromises: any[] = [];
+        let singlePxPromises: any[] = [];
+        // for (let i = 0; i < exchangesObjs.length; i++) {
+        //     if (exchangesObjs[i].has[`fetchTickers`])
+        //         pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
+        //     else if (exchangesObjs[i].id.toLowerCase() == `coinbasepro`)
+        //     {
+        //         for(let j = 0; j < tickersFull.length; j++)
+        //         {
+        //             try {
+        //                 if(tickersFull[j] != "USD/USDT" && tickersFull[j] != "USDT/USD")
+        //                     formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
+        //                 else
+        //                     formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j]);   
+        //             } catch (err: unknown) {
+        //                 if (err instanceof Error) {
+        //                     if(err.name!='BadSymbol')
+        //                         console.log(err); //ignore BadSymbol
+        //                   }
+        //             }
+        //         }
+        //         allRawData.push(formattedSingleRawData);  
+        //     }
+        //     else
+        //         console.error("Unhandled exchange: ", exchangesObjs[i].name);
+        // }
+        // // Get async Promise API call objects
+        // //let pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
 
-                }
-                allRawData.push(formattedSingleRawData);
-               
-            }
-            
-            else
-                console.error("Unhandled exchange: ", exchangesObjs[i].name);
-        }
-       // Get async Promise API call objects
-        //let pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
-
-        // Resolve those Promises concurrently
-        // This takes by far the longest time in this function, roughly 2 to 2.5 seconds
+        // // Resolve those Promises concurrently
+        // // This takes by far the longest time in this function, roughly 2 to 2.5 seconds
     
-        let tempData = await Promise.all(pxPromises);
-        tempData.map(x => allRawData.push(x));
+        // let tempData = await Promise.all(pxPromises);
+        // tempData.map(x => allRawData.push(x));
+
+
+        // Bulk fetch exchanges
+        let bulkFetchIdxs = exchangesObjs.map((ex, idx) => ex.has[`fetchTickers`] || false);
+        let bulkTickerExs = exchangesObjs.filter((ex, i) => bulkFetchIdxs[i])
+        bulkPxPromises = bulkTickerExs.map((ex, idx) => ex.fetchTickers(tickersFull));
+        
+        // individual ticker exchanges
+        // Only do for Coinbase
+        // TODO: add more single ticker exchanges, like Kraken
+        // let usdTickers = tickersFull.filter((ticker, idx) => ticker.split('/')[1] == 'USD')
+        let singleTickerExs = exchangesObjs.filter((ex, i) => !bulkFetchIdxs[i] && ex.id == 'coinbasepro')
+        for (let singleTickerEx of singleTickerExs) {
+            if (singleTickerEx.id == 'coinbasepro') {
+                let singleTickerExSupportedTickers = tickersFull.filter((ticker, idx) => singleTickerEx.symbols.includes(ticker))
+                // let singleTickerExSupportedTickers = tickersFull.filter((ticker, idx) => Object.keys(singleTickerEx.markets).includes(ticker))
+
+                // TODO: this may cause too many request issues, may need to loop individually over each ticker as we did previously
+                // push rather than concat to have parallel structure as bulkPxPromises of a separate array for each exchange
+                singlePxPromises.push(singleTickerExSupportedTickers.map((ticker, idx) => singleTickerEx.fetchTicker(ticker)))
+            }
+        }
+        
+        // Note unsupported exchanges
+        let unsupportedExs = exchangesObjs.filter((ex, i) => !bulkFetchIdxs[i] && ex.id != 'coinbasepro')
+        if (unsupportedExs.length > 0) {
+            console.log(`Warning! Unsupported exchanges: ${unsupportedExs.map((ex,idx) => ex.id).join(', ')}`)
+        }
+        
+        // Resolve promises
+        let bulkPxData = await Promise.all(bulkPxPromises);
+        let singlePxDataList = await Promise.all(singlePxPromises.map(Promise.all.bind(Promise)));    // Need to resolve array of array of promises
+        // Convert from array of arrays of quotes to an array of dicts of {symbol: quote}
+        let singlePxData = singlePxDataList.map((exResList, i) => {
+            let exResDict = {};
+            exResList.forEach((quote: any)=> {exResDict[quote.symbol] = quote});
+            return exResDict;
+        });
+        // Concatenate the two data sources
+        let allRawData = bulkPxData.concat(singlePxData);
         
         // Sort the raw data into various tickers
 
@@ -399,8 +438,23 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
                     volsBase.push(...(new Array((pxsEx[ticker] || []).length).fill(1)));
                 }
             }
-            return math.dot(pxsBase, volsBase) / math.sum(volsBase);
+            if (pxsBase.length == 0) {
+                // no prices for the asset on the given exchanges, return NaN
+                return NaN
+            } else {
+                return math.dot(pxsBase, volsBase) / math.sum(volsBase);
+            }
         });
+
+        // Temporary hacky work around for case when no prices are returned for an asset
+        // assets.filter((asset, idx)  => isNaN(prices[idx]))
+        for (let i=0; i<assets.length; i++) {
+            if (isNaN(prices[i])) {
+                let ccPrice = await getPricesCryptoCompare([assets[i]]);
+                prices[i] = ccPrice[0];
+            }
+        }
+
         return prices;
 
 
@@ -456,10 +510,11 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         
         // return prices;
         // // TODO: alternative 2: allRawData.map()
+        // combinedExs = bulkTickerExs.concat(singleTickerExs)
         // let quotesFlat = allRawData.map((exRets, i) => {
         //     return Object.entries(exRets).map(([ticker, quote], j) => {
         //         return {
-        //             'exchangeId': exchangesObjs[i].id,
+        //             'exchangeId': combinedExs[i].id,
         //             'ticker': ticker,
         //             'asset': quote['symbol'].split('/')[0],
         //             'base': quote['symbol'].split('/')[1], 
