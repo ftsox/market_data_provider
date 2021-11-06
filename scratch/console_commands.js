@@ -84,21 +84,34 @@ fromWei((await ethers.provider.getBalance(accounts[0].address)).toString())
 // fromWei((await ethers.provider.getBalance('0x46c283c599a5dC4CE614092eC31F354e89b4706F')).toString())
 
 
-// Connect to priceSubmitter
-MockPriceSubmitter = artifacts.require("MockPriceSubmitter");
-MockFtsoRegistry = artifacts.require("MockFtsoRegistry");
-MockVoterWhitelister = artifacts.require("MockVoterWhitelister");
-MockFtso = artifacts.require("MockNpmFtso");
-FtsoManager = artifacts.require("IFtsoManager");
-FtsoRewardManager = artifacts.require("IFtsoRewardManager");
+// // Connect to priceSubmitter
+// MockPriceSubmitter = artifacts.require("MockPriceSubmitter");
+// MockFtsoRegistry = artifacts.require("MockFtsoRegistry");
+// MockVoterWhitelister = artifacts.require("MockVoterWhitelister");
+// MockFtso = artifacts.require("MockNpmFtso");
+// FtsoManager = artifacts.require("IFtsoManager");
+// FtsoRewardManager = artifacts.require("IFtsoRewardManager");
 
-// priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122";
-// priceProviderAccount = web3.eth.accounts.privateKeyToAccount(priceProviderPrivateKey);
-// priceSubmitter = await MockPriceSubmitter.at("0x7c2C195CD6D34B8F845992d380aADB2730bB9C6F");
-priceSubmitter = await MockPriceSubmitter.at("0x1000000000000000000000000000000000000003");
-ftsoRegistry = await MockFtsoRegistry.at(await priceSubmitter.getFtsoRegistry());
-voterWhitelister = await MockVoterWhitelister.at(await priceSubmitter.getVoterWhitelister());
-ftsoManager = await FtsoManager.at(await priceSubmitter.getFtsoManager());
+// // priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122";
+// // priceProviderAccount = web3.eth.accounts.privateKeyToAccount(priceProviderPrivateKey);
+// // priceSubmitter = await MockPriceSubmitter.at("0x7c2C195CD6D34B8F845992d380aADB2730bB9C6F");
+// priceSubmitter = await MockPriceSubmitter.at("0x1000000000000000000000000000000000000003");
+// ftsoRegistry = await MockFtsoRegistry.at(await priceSubmitter.getFtsoRegistry());
+// voterWhitelister = await MockVoterWhitelister.at(await priceSubmitter.getVoterWhitelister());
+// ftsoManager = await FtsoManager.at(await priceSubmitter.getFtsoManager());
+
+
+priceSubmitterAbi     = require("./src_prod/priceSubmitter.json");
+MockFtsoRegistry      = require("./src_prod/MockFtsoRegistry.json");
+MockVoterWhitelister  = require("./src_prod/MockVoterWhitelister.json");
+MockFtso              = require("./src_prod/MockNpmFtso.json")
+priceSubmitterContract = new web3.eth.Contract(JSON.parse(JSON.stringify(priceSubmitterAbi)), priceSubmitterAddr);
+ftsoRegistry = new web3.eth.Contract(JSON.parse(JSON.stringify(MockFtsoRegistry)), await priceSubmitterContract.methods.getFtsoRegistry().call());
+voterWhitelister = new web3.eth.Contract(JSON.parse(JSON.stringify(MockVoterWhitelister)), await priceSubmitterContract.methods.getVoterWhitelister().call());
+
+
+
+
 // ftsoRewardManager = await FtsoRewardManager.at(await ftsoManager.rewardManager()); 
 // ftsoManager interface doesn't include this function
 // can grab ABI from the explorer (https://songbird-explorer.flare.network/address/0xbfA12e4E1411B62EdA8B035d71735667422A6A9e/contracts)
@@ -978,9 +991,6 @@ for(j = 0; j < assets.length; j++) {
 
 
 
-
-
-
 // TODO: alternative 2: allRawData.map()
 quotesFlat = allRawData.map((exRets, i) => {
     return Object.entries(exRets).map(([ticker, quote], j) => {
@@ -1000,3 +1010,138 @@ quotesFlat = allRawData.map((exRets, i) => {
 
 
 populateQuoteVolume(quote)['quoteVolume']
+
+
+//////////
+
+
+errorCount = 0;
+// sleep until submitBuffer seconds before the end of the epoch to maximize chance of being in interquartile range
+// Need a bit of buffer to let the other function calls return
+// Should be based on when others submit their prices to make sure we're as close as possible to them
+// submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
+// submitBuffer = submitBufferMin;              // Initial buffer for how many seconds before end of epoch we should start submission
+submitBufferMin = 18;           // Minimum buffer
+submitTimes = [];     // Record recent times to measure how much buffer we need
+submitBufferStd = 3;            // How many stds (normal)
+// var submitBufferDecay = 0.999;      // Decay factor on each loop
+// var submitBufferIncrease = 1.1;     // Increase factor (multiple of std) for when we miss a submission window
+submitBufferBase = 3;           // Base buffer rate.
+submitBufferBurnIn = 5;        // Number of periods before adjusting submitBuffer
+now = await getTime(web3);
+currentEpoch = 0;
+nextEpoch = currentEpoch;
+diff = 0;
+
+// Get time and current epoch params
+now = await getTime(web3);
+// now = (new Date()).getTime() / 1000; // susceptible to system clock drift
+currentEpochCheck = (Math.floor((now - firstEpochStartTime) / submitPeriod)); // don't add 1 here like above
+// check for drift
+// if (currentEpoch < currentEpochCheck) {
+currentEpoch = currentEpochCheck;
+nextEpoch = currentEpoch + 1;
+// }
+start = currentEpoch * submitPeriod + firstEpochStartTime;
+next = nextEpoch * submitPeriod + firstEpochStartTime;
+submitWaitTime = Math.max(Math.floor(next - now) - submitBuffer, 0);  // don't wait negative time
+
+console.log("\n\nEpoch ", currentEpoch); 
+console.log(`\tEpoch start time: ${new Date(start * 1000)}`);
+console.log(`\tCurrent time:     ${new Date(now * 1000)}`);
+console.log(`\tEpoch end time:   ${new Date(next * 1000)}`);
+console.log(`\tWaiting for ${submitWaitTime} seconds before getting price`); 
+// await sleep(submitWaitTime * 1000);
+
+startSubmitTime = new Date();
+if (isTestnet) {
+    // Force hardhat to mine a new block which will have an updated timestamp. if we don't hardhat timestamp will not update.
+    time.advanceBlock();    
+}
+console.log(`Start submit for epoch ${currentEpoch}`);
+console.log(`\tStart getting prices:    ${Date()}`); 
+// Prepare prices and randoms
+// Random generation for hashing of prices to submit in commit phase
+function getRandom(epochId, asset) {
+    return Math.floor(Math.random() * 1e10);
+}
+
+function submitPriceHash(price, random, address, web3) {
+    return ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode([ "uint256", "uint256", "address" ], [price.toString(), random.toString(), address]))
+}
+
+URL0, URL1, privKey, priceSubmitterAddr;
+if (isTestnet) {
+    URL0 = 'http://127.0.0.1:9650/ext/bc/C/rpc';
+    URL1 = 'https://songbird.towolabs.com/rpc';     // could be anything
+    // Price submitter is at a fixed address, change this to the address reported by `yarn hh_node`.
+    priceSubmitterAddr = '0x7c2C195CD6D34B8F845992d380aADB2730bB9C6F';
+    // Just the first from autogenerated accounts
+    priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122";
+    privKey = priceProviderPrivateKey.slice(2); // get rid of the 0x since it's added back in below    
+} else {
+    URL0 = process.env.RPC_NODE_URL;
+    // URL1 = 'https://songbird.towolabs.com/rpc';
+    URL1 = 'http://165.227.253.96:9650/ext/bc/C/rpc';
+    priceSubmitterAddr = '0x1000000000000000000000000000000000000003';
+    privKey = process.env.FTSO_PRIVATE_KEY ?? '';
+}
+priceProviderAccount = web3.eth.accounts.privateKeyToAccount(`0x${privKey}`);
+randoms = symbols.map(sym => getRandom(currentEpoch, sym)); 
+
+prices = symbols.map(sym => 10); // Just a mock here, real price should not be random
+// prices = await getPrices(currentEpoch, symbols, decimals, priceSource);
+
+console.log(`\tFinished getting prices: ${Date()}`); 
+
+hashes = prices.map((p, i) => 
+    submitPriceHash(p, randoms[i], priceProviderAccount.address, web3)
+);
+console.log(`\tFinished getting hashes: ${Date()}`); 
+console.log("Prices:  ", prices);
+console.log("Randoms: ", randoms);
+// occasionally, the submission will happen too late.
+// Catch those errors and continue
+
+
+
+submission = await priceSubmitterContract.methods.submitPriceHashes(currentEpoch, ftsoIndices, hashes).send({from: priceProviderAccount.address});
+console.log(`\tFinished submission:     ${Date()}`); 
+
+exchangeEncodeABI = priceSubmitterContract.methods.submitPriceHashes(currentEpoch,ftsoIndices, hashes).encodeABI();
+transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address); // hack fix
+gasPrice = await web3.eth.getGasPrice();
+transactionObject = {
+    chainId: 19,                                    // TODO: parameterize
+    nonce: web3.utils.toHex(transactionNonce),
+    gasLimit: web3.utils.toHex(469532),
+    gasPrice: web3.utils.toHex(gasPrice*1.2),
+    value: 0,
+    to: priceSubmitterAddr,
+    from: priceProviderAccount.address,
+    data: exchangeEncodeABI
+};
+result = [];
+signedTx = await web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
+// raw transaction string may be available in .raw or 
+// .rawTransaction depending on which signTransaction
+// function was called
+console.log(`\tPID ${process.pid} Submitting price hashes:       ${Date()}`)
+// tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
+console.log(`\tPID ${process.pid} First Provider timestamp:      ${Date()}`); 
+
+tx = await web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction)
+
+result.push(tx);
+// if (web3._provider.host != web3_backup._provider.host) {
+//     result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+//     console.log(`\tPID ${process.pid} Second Provider timestamp:     ${Date()}`); 
+// }
+tx.once('transactionHash',  async hash => {
+    console.log("SubmitPriceHash txHash: ", hash);
+})
+
+
+await Promise.all(result);
+
+submittedHash = true;
