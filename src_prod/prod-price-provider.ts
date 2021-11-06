@@ -373,7 +373,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         // Calculate weighted average
         // Could do this recursively (e.g. use BTC/USDT and BTC/USD to calculate BTC/USD rate), but for now keep it simple
         let baseAltsPxs = tickersAltsToBase.map((altTicker, idx) => 
-                math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker])
+            math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker])
         );
 
         let baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
