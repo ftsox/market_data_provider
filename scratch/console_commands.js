@@ -365,7 +365,7 @@ symbols.map((sym, i) => response.data.data[sym].quote[baseCurrency]['price'])
 const ccxt = require ('ccxt');
 
 // list of exchanges: https://ccxt.readthedocs.io/en/latest/manual.html#exchanges
-baseCurrency = 'USDT';
+baseCurrency = 'USD';
 symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
 
 exchanges = ['binance','ftx','huobi','kucoin','gateio'];
@@ -394,13 +394,13 @@ tickersBase = symbols.map((sym) => `${sym}/${baseCurrency}`);
 tickersBase.push(baseCurrencyAltToBaseCurrencyTicker);
 tickersBaseToSymbolsMap = new Map(symbols.map((sym, i) => [sym, tickersBase[i]])); // doesn't include USD/USDT
 var pxsEx = {};
-const tasks = [];
+tasks = [];
 for (let i = 0; i < fetchTargets.length; i++) {
     tasks.push(fetchTargets[i].fetchTickers(tickersBase));
   }
 
-const allRawData = Promise.all(tasks);
-var tickersRet = {};
+allRawData = Promise.all(tasks);
+tickersRet = {};
 allRawData.then(pxsRawEx => {
     tickersRet = Object.keys(pxsRawEx); // will typically be missing a bunch of keys
     console.log(tickersRet);
@@ -751,3 +751,252 @@ rewardHitRates.push(hitRate)
 // console.log(currencyHitRates);
 // avgHitRate = math.mean(rewardHitRates);
 // console.log(`Average hit rate across all assets: ${(avgHitRate * 100).toFixed(3)}%`)
+
+
+//////////////////////////////////////////////
+// Current CCXT
+////////
+
+
+ccxt = require ('ccxt');
+math = require("mathjs");
+
+
+// list of exchanges: https://ccxt.readthedocs.io/en/latest/manual.html#exchanges
+baseCurrency = 'USD';
+symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
+assets = symbols
+exchanges = ['binance','ftx','huobi','kucoin','gateio'];
+
+
+// let   fetchTargets: any[] =  [];
+// exchanges.forEach(element => {
+//     // let single = eval(`new ccxt.${element}`);
+//     let exchange = new ccxt[element]({});
+//     fetchTargets.push(exchange);
+// });
+if(exchanges.length == 0)
+{
+    console.error("CCXT chosen but no exchange source, exiting")
+    process.exit(1);
+}
+string = "";
+exchanges.forEach(function(element){
+    string += element + " ";
+});
+console.log("Ex Src: ", string);
+exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
+
+// let sym = assets[0];
+// let ticker = [sym, baseCurrency].join('/');
+
+baseCurrency = 'USD';
+baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
+// let baseCurrencyAlts = [];   // enable multiple alternative bases
+basesCombined = [baseCurrency, ...baseCurrencyAlts];
+// baseCurrencyAlts = ['USDT',];   // enable multiple alternative bases
+// Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
+// Use those for conversion, flag if it's a delta of more than x% (TODO)
+//['XRP/USD`, 'LTC/USD' ...]
+tickersBase = assets.map((sym) => `${sym}/${baseCurrency}`);
+// [][] -> ['XRP/USDT`, `LTC/USDT` ...][`XRP/BTC`, `LTC/BTC` ...]
+tickersBaseAlts = baseCurrencyAlts.map(baseCurrencyAlt => assets.map((sym) => `${sym}/${baseCurrencyAlt}`));
+//[] -> [XRP/USDT`, `LTC/USDT`..., `XRP/BTC`, `LTC/BTC`...]
+tickersBaseAltsFlat = tickersBaseAlts.reduce((partial_list, a) => [...partial_list, ...a], []);
+//[] -> [`USDT/USD`, `USDT/BTC`]
+tickersAltsToBase = baseCurrencyAlts.map((alt) => `${alt}/${baseCurrency}`);
+// baseCurrencyAltToBaseCurrencyTicker = `${baseCurrencyAlt}/${baseCurrency}`;
+//[] -> [`XRP/USD`, `LTC/USD`,... `XRP/USDT`, `LTC/USDT`..., `XRP/BTC`, `LTC/BTC`...]
+tickersFull = [...new Set([...tickersBase, ...tickersBaseAltsFlat, ...tickersAltsToBase])];     // deduplication with Set
+// Map [`XRP` -> `XRP/USD`]
+tickersBaseToSymbolsMap = new Map(assets.map((sym, i) => [sym, tickersBase[i]]));       // doesn't include USD/USDT
+// tickersBaseAltToSymbolsMap = new Map(assets.map((sym, i) => [sym, tickersBaseAltsFlat[i]]));
+
+pxsEx = {};     // arrays of prices for each ticker
+volsEx = {};    // arrays of volumes for each ticker (in base pair numeraire)
+formattedSingleRawData = {};
+
+
+allRawData = [];
+pxPromises = [];
+singlePxPromises = [];
+// for (i = 0; i < exchangesObjs.length; i++) {
+//     pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
+// }
+for (i = 0; i < exchangesObjs.length; i++) {
+    if (exchangesObjs[i].has[`fetchTickers`])
+        pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
+    else if (exchangesObjs[i].id.toLowerCase() == `coinbasepro`)
+    {
+        for(j = 0; j < tickersFull.length; j++)
+        {
+            try
+            {
+                if(tickersFull[j] != "USD/USDT" && tickersFull[j] != "USDT/USD")
+                    formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
+                else
+                    formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j]);   
+            }
+            catch(err){
+                if (err instanceof Error) {
+                    if(err.name!='BadSymbol')
+                        console.log(err); //ignore BadSymbol
+                    }
+            }
+
+        }
+        allRawData.push(formattedSingleRawData);
+        
+    }
+    
+    else
+        console.error("Unhandled exchange: ", exchangesObjs[i].name);
+}
+// Get async Promise API call objects
+//pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
+
+// Resolve those Promises concurrently
+// This takes by far the longest time in this function, roughly 2 to 2.5 seconds
+
+tempData = await Promise.all(pxPromises);
+tempData.map(x => allRawData.push(x));
+
+// Sort the raw data into various tickers
+
+
+function populateQuoteVolume(tickerData) {
+    if(tickerData.quoteVolume == null) {
+        tickerData.quoteVolume = tickerData.baseVolume * ((tickerData.bid + tickerData.ask) / 2);
+    }
+    return tickerData;
+}
+
+
+tickersRet = [];
+for (i = 0; i < allRawData.length; i++) {
+    //console.log(allRawData[i]);
+    tickersRet = Object.keys(allRawData[i]); // will typically be missing a bunch of keys
+    //console.log("tickerRet:", tickersRet);
+    // Iterate through all price pairs for the same asset (XRP/USD, XRP/USDT, XRP/BTC...)
+    // and convert them to USD based and push them into an array. After we iterate through
+    // the entire array, we convert them to a single volume weighted average.
+    tickersRet.forEach(tickerSymbol => {
+        pxsEx[tickerSymbol] = pxsEx[tickerSymbol] || [];
+        pxsEx[tickerSymbol].push(
+            (allRawData[i][tickerSymbol].bid + allRawData[i][tickerSymbol].ask) / 2
+        );
+        volsEx[tickerSymbol] = volsEx[tickerSymbol] || [];
+        volsEx[tickerSymbol].push(
+            populateQuoteVolume(allRawData[i][tickerSymbol]).quoteVolume || 0
+        );
+    });
+};
+
+// get prices for alternative base currencies
+// Calculate weighted average
+// Could do this recursively (e.g. use BTC/USDT and BTC/USD to calculate BTC/USD rate), but for now keep it simple
+baseAltsPxs = tickersAltsToBase.map((altTicker, idx) => 
+    math.dot(pxsEx[altTicker], volsEx[altTicker]) / math.sum(volsEx[altTicker])
+);
+
+baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
+baseAltPxsMap.set(baseCurrency, 1);
+
+// Get to volume weighted price for each asset
+// TODO: alternative 1: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
+// TODO: add an exchange-level weighting factor, s.t. weight = volume * exchange_factor, to reflect exchange quality of volume
+prices = assets.map((asset, idx) => {
+    pxsBase = [];
+    volsBase = [];
+    // convert each set of quotes for each base to global base (USD)
+    for (base of basesCombined) {
+        ticker = `${asset}/${base}`;
+        // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
+        pxsBase.push (...math.dotMultiply(pxsEx[ticker] || [], baseAltPxsMap.get(base)));
+        if (volumeWeight) {
+            volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
+        } else {
+            volsBase.push(...(new Array((pxsEx[ticker] || []).length).fill(1)));
+        }
+    }
+    return math.dot(pxsBase, volsBase) / math.sum(volsBase);
+});
+
+
+
+
+
+prices = [];
+// realvolumeWeight = volumeWeight;
+loopVolumeWeight = volumeWeight;
+for(j = 0; j < assets.length; j++) {
+    pxsBase = [];
+    volsBase = [];
+    // convert each set of quotes for each base to global base (USD)
+    for (base of basesCombined) {
+        loopVolumeWeight = volumeWeight;
+        ticker = `${assets[j]}/${base}`;
+        // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
+        if (pxsEx[ticker] == null) {
+            //speical handling for tickers goes here
+            if (assets[j] == 'DGB') {
+                asset_array = []
+                asset_array.push(assets[j]);
+                temp =  await getPricesCryptoCompare(asset_array);
+                pxsBase.push(temp[0]);
+                volsBase.push(...(new Array(1).fill(1)));       
+                continue;
+            }
+            //add more speical pair handling
+            else
+            {
+                console.log(ticker, "has no price nor special handling, defaulting to cryptocompare (bad)");
+                asset_array = []
+                asset_array.push(assets[j]);
+                temp =  await getPricesCryptoCompare(asset_array);
+                pxsBase.push(temp[0]);
+                volsBase.push(...(new Array(1).fill(1)));    
+                continue;           
+            }
+        }
+        else if ((volsEx[ticker] == null && loopvolumeWeight) || 
+            (pxsEx[ticker].length != volsEx[ticker].length))
+        {
+            //if we reach here that means we have price but no volume.
+            console.log(ticker, "has no volume or lengths dont match");
+            loopVolumeWeight = false;
+        }
+        pxsBase.push (...math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base)));
+        if (loopVolumeWeight) {
+            volsBase.push(...math.dotMultiply(volsEx[ticker] , baseAltPxsMap.get(base)));
+        } else {
+            volsBase.push(...(new Array((pxsEx[ticker] ).length).fill(1)));
+        }
+    }
+    prices.push( math.dot(pxsBase, volsBase) / math.sum(volsBase));
+}
+
+
+
+
+
+
+// TODO: alternative 2: allRawData.map()
+quotesFlat = allRawData.map((exRets, i) => {
+    return Object.entries(exRets).map(([ticker, quote], j) => {
+        return {
+            'exchangeId': exchangesObjs[i].id,
+            'ticker': ticker,
+            'asset': quote['symbol'].split('/')[0],
+            'base': quote['symbol'].split('/')[1], 
+            'bid': quote['bid'],
+            'ask': quote['ask'],
+            'mid': (quote['bid'] + quote['ask'])/2,
+            'volume': quote['quoteVolume'],
+        };
+    });
+}).reduce((partial_list, a) => [...partial_list, ...a], []);
+
+
+
+populateQuoteVolume(quote)['quoteVolume']

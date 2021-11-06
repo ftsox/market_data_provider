@@ -85,12 +85,16 @@ var volumeWeight = (process.env.VOLUME_WEIGHT || 'FALSE') == 'TRUE' ? true : fal
 var useSystemTime = (process.env.USE_SYSTEM_TIME || 'FALSE') == 'TRUE' ? true : false;
 var constantBuffer = (process.env.CONSTANT_BUFFER || 'FALSE') == 'TRUE' ? true : false;
 var submitBufferMin: number = parseInt(process.env.SUBMIT_BUFFER_MIN || '18');
+var convertUsdt = (process.env.CONVERT_USDT || 'FALSE') == 'TRUE' ? true : false;
 
 console.log('Configuration:')
 console.log(`    Network:          ${network}`)
+console.log(`    Node URL0:        ${URL0}`)
+console.log(`    Node URL1:        ${URL1}`)
 console.log(`    isTestnet:        ${isTestnet}`)
 console.log(`    baseCurrency      ${baseCurrency     }`);
 console.log(`    baseCurrencyAlts  ${baseCurrencyAlts }`);
+console.log(`    convertUsdt       ${convertUsdt      }`);
 console.log(`    priceSource       ${priceSource      }`);
 console.log(`    exchanges         ${exchanges        }`); 
 console.log(`    volumeWeight      ${volumeWeight     }`);
@@ -160,7 +164,7 @@ async function getTimeWTA(): Promise<number>{
 // console.log(`Average diff: ${math.mean(timeDiffs)}`);
 
 
-export function submitPriceHash(price: number, random: number, address: string, web3: any): string {
+export function submitPriceHash(price: number, random: string, address: string, web3: any): string {
     return ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode([ "uint256", "uint256", "address" ], [price.toString(), random.toString(), address]))
 }
 
@@ -374,6 +378,9 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
 
         let baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
         baseAltPxsMap.set(baseCurrency, 1);
+        if (!convertUsdt) {
+            baseAltPxsMap.set('USDT', 1);
+        }
 
         // Get to volume weighted price for each asset
         // TODO: alternative 1: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
@@ -396,6 +403,58 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         });
         return prices;
 
+
+
+
+        // // let prices = [];
+        // // for(let j = 0; j < assets.length; j++) {
+        // //     let pxsBase = [];
+        // //     let volsBase = [];
+        // //     // convert each set of quotes for each base to global base (USD)
+        // //     for (let base of basesCombined) {
+        // //         let loopvolumeWeight = volumeWeight;
+        // //         let ticker = `${assets[j]}/${base}`;
+        // //         // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
+        // //         if (pxsEx[ticker] == null) {
+        // //             //speical handling for tickers goes here
+        // //             if (assets[j] == 'DGB') {
+        // //                 let asset_array = []
+        // //                 asset_array.push(assets[j]);
+        // //                 let temp =  await getPricesCryptoCompare(asset_array);
+        // //                 pxsBase.push(temp[0]);
+        // //                 volsBase.push(...(new Array(1).fill(1)));       
+        // //                 continue;        
+        // //             } else {
+        // //                 //add more speical pair handling
+        // //                 console.log(ticker, "has no price nor special handling, defaulting to cryptocompare (bad)");
+        // //                 let asset_array = []
+        // //                 asset_array.push(assets[j]);
+        // //                 let temp =  await getPricesCryptoCompare(asset_array);
+        // //                 pxsBase.push(temp[0]);
+        // //                 volsBase.push(...(new Array(1).fill(1)));    
+        // //                 continue;           
+        // //             }
+        // //         }
+        // //         else if (
+        // //                 (volsEx[ticker] == null && loopvolumeWeight) || 
+        // //                 (pxsEx[ticker].length != volsEx[ticker].length)
+        // //             )
+        // //         {
+        // //             //if we reach here that means we have price but no volume.
+        // //             console.log(ticker, "has no volume or lengths dont match");
+        // //             loopvolumeWeight = false;
+        // //         }
+        // //         pxsBase.push (...math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base)));
+        // //         if (loopvolumeWeight) {
+        // //             volsBase.push(...math.dotMultiply(volsEx[ticker] , baseAltPxsMap.get(base)));
+        // //         } else {
+        // //             volsBase.push(...(new Array((pxsEx[ticker] ).length).fill(1)));
+        // //         }
+        // //     }
+        // //     prices.push( math.dot(pxsBase, volsBase) / math.sum(volsBase));
+        // // }
+        
+        // return prices;
         // // TODO: alternative 2: allRawData.map()
         // let quotesFlat = allRawData.map((exRets, i) => {
         //     return Object.entries(exRets).map(([ticker, quote], j) => {
@@ -564,8 +623,9 @@ async function getPricesCoinGecko(assets: string[]): Promise<number[]>{
 
 
 // Random generation for hashing of prices to submit in commit phase
-function getRandom(epochId: number, asset: string): number{
-    return Math.floor(Math.random() * 1e10);
+function getRandom(epochId: number, asset: string): string{
+    // return Math.floor(Math.random() * 1e10);
+    return web3.utils.randomHex(32);
 }
 
 
@@ -622,6 +682,8 @@ async function main() {
     
     // Get Price Provider account based on the config
     const priceProviderAccount = web3.eth.accounts.privateKeyToAccount(`0x${privKey}`);
+    web3.eth.accounts.wallet.add(priceProviderAccount);
+    web3.eth.defaultAccount = priceProviderAccount.address;
 
     // Get balance of addresses
     var sgbBalance = fromWei((await web3.eth.getBalance(priceProviderAccount.address)).toString());
@@ -843,7 +905,8 @@ async function main() {
         console.log(`Start submit for epoch ${currentEpoch}`);
         console.log(`\tStart getting prices:    ${Date()}`); 
         // Prepare prices and randoms
-        const randoms = symbols.map(sym => getRandom(currentEpoch, sym as string)); 
+        // const randoms = symbols.map(sym => web3.utils.randomHex(32)); 
+        const randoms = symbols.map(sym => getRandom(currentEpoch, sym as string));
 
         // const prices = symbols.map(sym => getPrice(currentEpoch, sym)); // Just a mock here, real price should not be random
         const prices = await getPrices(currentEpoch, symbols as string[], decimals, priceSource);
@@ -862,57 +925,68 @@ async function main() {
         
         try {
 
-            const exchangeEncodeABI = priceSubmitterContract.methods.submitPriceHashes(currentEpoch,ftsoIndices, hashes).encodeABI();
-            var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
-            var gasPrice = await web3.eth.getGasPrice();
-            const transactionObject = {
-                chainId: 19,                                    // TODO: parameterize
-                nonce: web3.utils.toHex(transactionNonce),
-                gasLimit: web3.utils.toHex(469532),
-                gasPrice: web3.utils.toHex(gasPrice*1.2),
-                value: 0,
-                to: priceSubmitterAddr,
-                from: priceProviderAccount.address,
-                data: exchangeEncodeABI
-            };
-            const result : any[] = [];
-            // const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
-            // signPromise.then((signedTx) => {  
-            //     // raw transaction string may be available in .raw or 
-            //     // .rawTransaction depending on which signTransaction
-            //     // function was called
-            //     console.log(`\tSubmitting price hashes:       ${Date()}`)
-            //     const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
-            //     console.log(`\tFirst Provider timestamp:      ${Date()}`); 
+            // const exchangeEncodeABI = priceSubmitterContract.methods.submitPriceHashes(currentEpoch,ftsoIndices, hashes).encodeABI();
+            // var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
+            // var gasPrice = await web3.eth.getGasPrice();
+            // const transactionObject = {
+            //     chainId: 19,                                    // TODO: parameterize
+            //     nonce: web3.utils.toHex(transactionNonce),
+            //     gasLimit: web3.utils.toHex(469532),
+            //     gasPrice: web3.utils.toHex(gasPrice*1.2),
+            //     value: 0,
+            //     to: priceSubmitterAddr,
+            //     from: priceProviderAccount.address,
+            //     data: exchangeEncodeABI
+            // };
+            // const result : any[] = [];
+            // // const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
+            // // signPromise.then((signedTx) => {  
+            // //     // raw transaction string may be available in .raw or 
+            // //     // .rawTransaction depending on which signTransaction
+            // //     // function was called
+            // //     console.log(`\tSubmitting price hashes:       ${Date()}`)
+            // //     const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
+            // //     console.log(`\tFirst Provider timestamp:      ${Date()}`); 
 
-            //     result.push(tx);
-            //     result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
-            //     console.log(`\tSecond Provider timestamp:     ${Date()}`); 
-            //     tx.once('transactionHash',  async hash => {
-            //         console.log("SubmitPriceHash txHash: ", hash);
-            //     })
+            // //     result.push(tx);
+            // //     result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+            // //     console.log(`\tSecond Provider timestamp:     ${Date()}`); 
+            // //     tx.once('transactionHash',  async hash => {
+            // //         console.log("SubmitPriceHash txHash: ", hash);
+            // //     })
                 
-            // });
+            // // });
 
-            const signedTx = await web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
-            // raw transaction string may be available in .raw or 
-            // .rawTransaction depending on which signTransaction
-            // function was called
-            console.log(`\tPID ${process.pid} Submitting price hashes:       ${Date()}`)
-            const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
-            console.log(`\tPID ${process.pid} First Provider timestamp:      ${Date()}`); 
+            // const signedTx = await web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
+            // // raw transaction string may be available in .raw or 
+            // // .rawTransaction depending on which signTransaction
+            // // function was called
+            // console.log(`\tPID ${process.pid} Submitting price hashes:       ${Date()}`)
+            // const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
+            // console.log(`\tPID ${process.pid} First Provider timestamp:      ${Date()}`); 
 
-            result.push(tx);
-            if (web3._provider.host != web3_backup._provider.host) {
-                result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
-                console.log(`\tPID ${process.pid} Second Provider timestamp:     ${Date()}`); 
-            }
-            tx.once('transactionHash',  async hash => {
-                console.log("SubmitPriceHash txHash: ", hash);
-            })
+            // result.push(tx);
+            // if (web3._provider.host != web3_backup._provider.host) {
+            //     result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+            //     console.log(`\tPID ${process.pid} Second Provider timestamp:     ${Date()}`); 
+            // }
+            // tx.once('transactionHash',  async hash => {
+            //     console.log("SubmitPriceHash txHash: ", hash);
+            // })
 
             
-            await Promise.all(result);
+            // await Promise.all(result);
+
+            console.log(`Submitting Price Hashes from: ${priceProviderAccount.address}`)
+            var gasPrice = await web3.eth.getGasPrice();
+            var submission = await priceSubmitterContract.methods.submitPriceHashes(currentEpoch, ftsoIndices, hashes).send(
+                {
+                    from: priceProviderAccount.address,
+                    gas: web3.utils.toHex(469532),
+                    gasPrice: web3.utils.toHex(gasPrice*1.2),
+                }
+            );
+            console.log(`\tFinished submission:     ${Date()}`); 
         
             submittedHash = true;
         } catch (error) {
@@ -997,45 +1071,55 @@ async function main() {
             console.log(`\tSubmitting price reveal: ${Date()}`)
             try {
                 
-                const exchangeEncodeABI = priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).encodeABI();
-                var gasLimit = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: priceProviderAccount.address});
-                var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
+                // const exchangeEncodeABI = priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).encodeABI();
+                // var gasLimit = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: priceProviderAccount.address});
+                // var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
+                // var gasPrice = await web3.eth.getGasPrice();
+                // const transactionObject = {
+                //     chainId: 19,
+                //     nonce: web3.utils.toHex(transactionNonce),
+                //     gasLimit: web3.utils.toHex(gasLimit),
+                //     gasPrice: web3.utils.toHex(gasPrice),
+                //     value: 0,
+                //     to: priceSubmitterAddr,
+                //     from: priceProviderAccount.address,
+                //     data: exchangeEncodeABI
+                // };
+                // const result : any[] = [];
+
+
+                // // const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`)
+                // // .then(signedTx => web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction))
+                // // .then(receipt => console.log(`\tFinished reveal:         ${Date()}`))
+                // // .catch(err => console.error(err));
+
+
+                // const signedTx = await web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
+                // // raw transaction string may be available in .raw or 
+                // // .rawTransaction depending on which signTransaction
+                // // function was called
+                // const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
+                // result.push(tx);
+                // if (web3._provider.host != web3_backup._provider.host) {
+                //     result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
+                // }
+                // tx.once('transactionHash',  async hash => {
+                //     console.log("txHash: ", hash);
+                // })
+                // await Promise.all(result)
+
+
+                console.log(`Revealing Prices from: ${priceProviderAccount.address}`)
                 var gasPrice = await web3.eth.getGasPrice();
-                const transactionObject = {
-                    chainId: 19,
-                    nonce: web3.utils.toHex(transactionNonce),
-                    gasLimit: web3.utils.toHex(gasLimit),
-                    gasPrice: web3.utils.toHex(gasPrice),
-                    value: 0,
-                    to: priceSubmitterAddr,
-                    from: priceProviderAccount.address,
-                    data: exchangeEncodeABI
-                };
-                const result : any[] = [];
-
-
-                // const signPromise = web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`)
-                // .then(signedTx => web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction))
-                // .then(receipt => console.log(`\tFinished reveal:         ${Date()}`))
-                // .catch(err => console.error(err));
-
-
-                const signedTx = await web3.eth.accounts.signTransaction(transactionObject, `0x${privKey}`);
-                // raw transaction string may be available in .raw or 
-                // .rawTransaction depending on which signTransaction
-                // function was called
-                const tx = web3_backup.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
-                result.push(tx);
-                if (web3._provider.host != web3_backup._provider.host) {
-                    result.push(web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction));
-                }
-                tx.once('transactionHash',  async hash => {
-                    console.log("txHash: ", hash);
-                })
-                await Promise.all(result)
+                var gasLimit = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: priceProviderAccount.address});
+                var submission = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).send(
+                    {
+                        from: priceProviderAccount.address,
+                        gas: gasLimit,
+                        gasPrice: web3.utils.toHex(gasPrice*1.2),
+                    }
+                );
                 console.log(`\tFinished reveal:         ${Date()}`); 
-
-
 
                 console.log("Revealed prices for epoch ", currentEpoch);
             } catch (error) {
