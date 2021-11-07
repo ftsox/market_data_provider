@@ -11,6 +11,7 @@ const { fromWei } = Web3.utils;
 const EthTx = require("ethereumjs-tx");
 const math = require("mathjs");
 const nodemailer = require("nodemailer");
+const {BigQuery} = require('@google-cloud/bigquery');
 // @ts-ignore
 import { time } from '@openzeppelin/test-helpers';  // TODO: get rid of this
 import { exit } from 'process';
@@ -66,6 +67,9 @@ const web3_backup = new Web3(
     new Web3.providers.HttpProvider(URL1, web3ProviderOptions)
 );
 
+
+// BigQuery setup
+const bigquery = new BigQuery();
 
 
 // var baseCurrency = 'USD';
@@ -223,8 +227,9 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
             case 'COINGECKO':
                 prices = await getPricesCoinGecko(assets);  // no API key needed
                 break;
-            case 'MODEL':
-                prices = await getPricesModel_USD_USDT_Weighted(epochId, assets)
+            case 'MODEL_USD_USDT_WEIGHTED':
+                prices = await getPricesModel_USD_USDT_Weighted(epochId, assets);
+                break;
             case 'ERROR':
                 // Error case for testing
                 prices = new Array(nAssets).fill(-1);
@@ -298,8 +303,44 @@ async function getPricesModel_USD_USDT_Weighted(epochId: number, assets: string[
             pxsUSD = assets.map(a => ccxtPxsAll['USD'][a]);
             pxsUSD = pxsUSD.map((value, idx) => isNaN(value) ? ccPrices[idx] : value);
         }
-        let lambda = 0.5;   // default to simple average
-        let modelPrices = math.add(math.multiply(lambda, pxsUSD), math.multiply((1 - lambda), pxsUSDT));
+
+        // Get model info from BigQuery
+        let modelId = 'USD_USDT_Weighting_Regression';
+        // let query = `
+        //     SELECT MAX(epochId) as lastEpoch
+        //     FROM \`bbftso-329118.FTSO.ModelParams\`
+        //     WHERE modelId = "${modelId}"`;
+
+        let query = `
+            SELECT * FROM \`bbftso-329118.FTSO.ModelParams\` 
+            WHERE epochId = (SELECT MAX(epochId) FROM \`bbftso-329118.FTSO.ModelParams\` WHERE modelId='${modelId}')
+            AND modelId = '${modelId}'`;
+        var lambdaDefault = 0.5;   // default to simple average
+        try {
+            var modelParamsData = (await bigquery.query(query))[0];
+            var lambdas = {};
+            modelParamsData.forEach(row => {
+                let lam = Number(row['value']);
+                let score = Number(row['score']);
+                if (lam < 0 || lam > 1 || (epochId-row['epochId']) > 250) {
+                    lam = lambdaDefault;
+                }
+                // can condition on score as well
+                // TODO: add more quality checks
+                lambdas[row['symbol']] = lam;
+            });
+            var lambdaCalc: any[] = assets.map((asset) => lambdas[asset]);
+        }
+        catch(error) {
+            console.log(`BigQuery error:\n  ${error}`);
+            var lambdaCalc: any[] = assets.map((asset) => lambdaDefault);
+        }
+        
+        // let modelPrices = math.add(math.multiply(lambda, pxsUSD), math.multiply((1 - lambda), pxsUSDT));
+        let modelPrices = math.add(
+                math.dotMultiply(lambdaCalc, pxsUSD), 
+                math.dotMultiply(math.subtract(1, lambdaCalc), pxsUSDT)
+            );
         return modelPrices;
     } catch(error){
         console.log(`Get prices error:\n  ${error}`);
