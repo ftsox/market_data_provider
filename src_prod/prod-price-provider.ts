@@ -330,6 +330,8 @@ async function getPricesModel_USD_USDT_Weighted(epochId: number, assets: string[
                 lambdas[row['symbol']] = lam;
             });
             var lambdaCalc: any[] = assets.map((asset) => lambdas[asset]);
+            console.log(`Model params fetched for BigQuery for epoch ${modelParamsData[0]['epochId']}`);
+            console.log(`    Lambdas: ${lambdaCalc}`);
         }
         catch(error) {
             console.log(`BigQuery error:\n  ${error}`);
