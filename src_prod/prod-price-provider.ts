@@ -11,6 +11,7 @@ const { fromWei } = Web3.utils;
 const EthTx = require("ethereumjs-tx");
 const math = require("mathjs");
 const nodemailer = require("nodemailer");
+const {BigQuery} = require('@google-cloud/bigquery');
 // @ts-ignore
 import { time } from '@openzeppelin/test-helpers';  // TODO: get rid of this
 import { exit } from 'process';
@@ -67,6 +68,9 @@ const web3_backup = new Web3(
 );
 
 
+// BigQuery setup
+const bigquery = new BigQuery();
+
 
 // var baseCurrency = 'USD';
 var baseCurrency: string = process.env.BASE_CURRENCY || 'USD';
@@ -79,6 +83,7 @@ if (baseCurrencyAltsRaw.length == 0) {
 }
 var baseCurrencyLower = baseCurrency.toLowerCase();
 var priceSource: string = process.env.PRICE_SOURCE || '';
+var priceSourceBackup: string = process.env.PRICE_SOURCE_BACKUP || '';
 var exchangeSource: string = process.env.EXCHANGE_SOURCE || '';
 var exchanges = exchangeSource.split(', ');
 var volumeWeight = (process.env.VOLUME_WEIGHT || 'FALSE') == 'TRUE' ? true : false;
@@ -86,6 +91,7 @@ var useSystemTime = (process.env.USE_SYSTEM_TIME || 'FALSE') == 'TRUE' ? true : 
 var constantBuffer = (process.env.CONSTANT_BUFFER || 'FALSE') == 'TRUE' ? true : false;
 var submitBufferMin: number = parseInt(process.env.SUBMIT_BUFFER_MIN || '18');
 var convertUsdt = (process.env.CONVERT_USDT || 'FALSE') == 'TRUE' ? true : false;
+var checkPrices = (process.env.CHECK_PRICES || 'FALSE') == 'TRUE' ? true : false;
 
 console.log('Configuration:')
 console.log(`    Network:          ${network}`)
@@ -96,11 +102,14 @@ console.log(`    baseCurrency      ${baseCurrency     }`);
 console.log(`    baseCurrencyAlts  ${baseCurrencyAlts }`);
 console.log(`    convertUsdt       ${convertUsdt      }`);
 console.log(`    priceSource       ${priceSource      }`);
+console.log(`    priceSourceBackup ${priceSourceBackup}`);
 console.log(`    exchanges         ${exchanges        }`); 
 console.log(`    volumeWeight      ${volumeWeight     }`);
 console.log(`    useSystemTime     ${useSystemTime    }`);
 console.log(`    constantBuffer    ${constantBuffer   }`);
 console.log(`    submitBufferMin   ${submitBufferMin  }`);
+console.log(`    checkPrices       ${checkPrices      }`);
+
 
 /*
     Helper Functions
@@ -194,18 +203,17 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
         return [];
     }
     // if we haven't initialized last price, start it off with -1s
-    // if (pricesLast[assetsUid].length == 0 && nAssets > 0) {
     if (!(assetsUid in pricesLast)) {
         pricesLast[assetsUid] = new Array(nAssets).fill(-1);
     }
     // Get prices
     try {
-        //// Could get multiple prices simultaneously using await Promise.all(...)
-        //// Ref: https://dev.to/raviojha/javascript-making-multiple-api-calls-the-right-way-2b29
-        let prices;
+        let prices, pxsAll;
         switch (priceSource) {
             case 'CCXT':
-                prices = await getPricesCCXT(assets);
+                let ccxtRet = await getPricesCCXT(assets);
+                // [prices, pxsAll] 
+                prices = ccxtRet[0]
                 break;
             case 'CRYPTOCOMPARE':
                 prices = await getPricesCryptoCompare(assets);
@@ -219,18 +227,33 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
             case 'COINGECKO':
                 prices = await getPricesCoinGecko(assets);  // no API key needed
                 break;
+            case 'MODEL_USD_USDT_WEIGHTED':
+                prices = await getPricesModel_USD_USDT_Weighted(epochId, assets);
+                break;
             case 'ERROR':
                 // Error case for testing
                 prices = new Array(nAssets).fill(-1);
                 break;
             default:
-                prices = await getPricesCoinGecko(assets);  // no API key needed
+                prices = await getPricesCryptoCompare(assets);
                 break;
         }
         // var validPrice = prices.reduce((partial_sum, a) => partial_sum + a,0) > 0;
-        var validPrice = prices[0] > 0;
-        var pricesAdj = prices.map((p,i) => Math.round(p * 10**decimals[i]))
+        // var validPrice = prices[0] > 0;
+        var validPrice = math.sum(prices.map(p => p >= 0)) == assets.length;
         // Check if price source function returned array of -1, signalling an error
+        if (!validPrice) {
+            // Try getting backup prices, recursively
+            if (priceSource != priceSourceBackup) {
+                console.log(`Getting backup prices...`)
+                let pricesBackup = getPrices(epochId, assets, decimals, priceSourceBackup)
+                let pricesBlended = prices.map((value, idx) => isNaN(value) ? pricesBackup[idx] : value);
+                // check to see if it's now valid
+                validPrice = math.sum(pricesBlended.map(p => p >= 0)) == assets.length;
+            }
+        }
+        var pricesAdj = prices.map((p,i) => Math.round(p * 10**decimals[i]));
+        // Check again i we have valid prices, otherwise return last known
         if (!validPrice) {
             // If invalid, return last valid pricing
             pricesAdj = pricesLast[assetsUid];
@@ -247,6 +270,89 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
     }
 }
 
+
+// Get modeled price
+//   Model overview
+//   We want to find lambda s.t.
+//       Price = lambda * usd_price + (1 - lambda) * usdt_price
+//   Since people are clearly not converting from USDT to USD numeraire and just averaging USDT and USD prices
+//   Rearranging:
+//       Price = usdt_price + lambda * (usd_price - usdt_price)
+//       (Price - usdt_price) = lambda * (usd_price - usdt_price)
+//   Run regression without intercept to find least squares fit for lambda
+//   Price premium to USDT is some fraction of USD px's premium to USDT px
+//   Then need to test predicting price for period n using USDT and USD prices for period n plugged into 
+//   a model fitted on data through period n-1
+async function getPricesModel_USD_USDT_Weighted(epochId: number, assets: string[]): Promise<number[]>{
+    // Get prices
+    try {
+        let ccxtRet = await getPricesCCXT(assets);
+        // let ccxtPrices = ccxtRet[0];
+        let ccxtPxsAll = ccxtRet[1];
+        let ccPrices = await getPricesCryptoCompare(assets);
+
+        let pxsUSDT = assets.map(a => ccxtPxsAll['USDT'][a]);
+        let useCcForUsd = true;
+        let pxsUSD;
+        // Option 1: Use CryptoCompare prices in lieu of direct USD prices (a bit more reliable)
+        if (useCcForUsd) {
+            pxsUSD = ccPrices;
+        }
+        // Option 2: USD prices
+        else {
+            pxsUSD = assets.map(a => ccxtPxsAll['USD'][a]);
+            pxsUSD = pxsUSD.map((value, idx) => isNaN(value) ? ccPrices[idx] : value);
+        }
+
+        // Get model info from BigQuery
+        let modelId = 'USD_USDT_Weighting_Regression';
+        // let query = `
+        //     SELECT MAX(epochId) as lastEpoch
+        //     FROM \`bbftso-329118.FTSO.ModelParams\`
+        //     WHERE modelId = "${modelId}"`;
+
+        let query = `
+            SELECT * FROM \`bbftso-329118.FTSO.ModelParams\` 
+            WHERE epochId = (SELECT MAX(epochId) FROM \`bbftso-329118.FTSO.ModelParams\` WHERE modelId='${modelId}')
+            AND modelId = '${modelId}'`;
+        var lambdaDefault = 0.5;   // default to simple average
+        try {
+            var modelParamsData = (await bigquery.query(query))[0];
+            var lambdas = {};
+            modelParamsData.forEach(row => {
+                let lam = Number(row['value']);
+                let score = Number(row['score']);
+                if (lam < 0 || lam > 1 || (epochId-row['epochId']) > 250) {
+                    lam = lambdaDefault;
+                }
+                // can condition on score as well
+                // TODO: add more quality checks
+                lambdas[row['symbol']] = lam;
+            });
+            var lambdaCalc: any[] = assets.map((asset) => lambdas[asset]);
+            console.log(`Model params fetched for BigQuery for epoch ${modelParamsData[0]['epochId']}`);
+            console.log(`    Lambdas: ${lambdaCalc}`);
+        }
+        catch(error) {
+            console.log(`BigQuery error:\n  ${error}`);
+            var lambdaCalc: any[] = assets.map((asset) => lambdaDefault);
+        }
+        
+        // let modelPrices = math.add(math.multiply(lambda, pxsUSD), math.multiply((1 - lambda), pxsUSDT));
+        let modelPrices = math.add(
+                math.dotMultiply(lambdaCalc, pxsUSD), 
+                math.dotMultiply(math.subtract(1, lambdaCalc), pxsUSDT)
+            );
+        return modelPrices;
+    } catch(error){
+        console.log(`Get prices error:\n  ${error}`);
+        // return assets.map((sym, i) => -1);   // Return 0's, TOOD: update - maybe return last prices?
+        // If invalid, return last valid pricing
+        return assets.map((sym, i) => -1);
+    }
+}
+
+
 function populateQuoteVolume(tickerData: any): any{
     if(tickerData.quoteVolume == null) {
         tickerData.quoteVolume = tickerData.baseVolume * ((tickerData.bid + tickerData.ask) / 2);
@@ -262,13 +368,7 @@ function populateQuoteVolume(tickerData: any): any{
 // https://ccxt.readthedocs.io/en/latest/manual.html#loading-markets
 var exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
 var exchangesMarkets = (async () => { await Promise.all(exchangesObjs.map((ex) => ex.load_markets())) }) ()
-async function getPricesCCXT(assets: string[]): Promise<number[]>{
-    // let   fetchTargets: any[] =  [];
-    // exchanges.forEach(element => {
-    //     // let single = eval(`new ccxt.${element}`);
-    //     let exchange = new ccxt[element]({});
-    //     fetchTargets.push(exchange);
-    // });
+async function getPricesCCXT(assets: string[]): Promise<[number[], {}]> {
     if(exchanges.length == 0)
     {
         console.error("CCXT chosen but no exchange source, exiting")
@@ -280,25 +380,16 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
     });
     console.log("Ex Src: ", string);
 
-    // let sym = assets[0];
-    // let ticker = [sym, baseCurrency].join('/');
-
-    // let baseCurrency = 'USDT';
-    // let baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
-    // let baseCurrencyAlts = [];   // enable multiple alternative bases
     let basesCombined = [baseCurrency, ...baseCurrencyAlts];
-    // let baseCurrencyAlts = ['USDT',];   // enable multiple alternative bases
-    // Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
-    // Use those for conversion, flag if it's a delta of more than x% (TODO)
     //['XRP/USD`, 'LTC/USD' ...]
     let tickersBase = assets.map((sym) => `${sym}/${baseCurrency}`);
     // [][] -> ['XRP/USDT`, `LTC/USDT` ...][`XRP/BTC`, `LTC/BTC` ...]
     let tickersBaseAlts = baseCurrencyAlts.map(baseCurrencyAlt => assets.map((sym) => `${sym}/${baseCurrencyAlt}`));
     //[] -> [XRP/USDT`, `LTC/USDT`..., `XRP/BTC`, `LTC/BTC`...]
     let tickersBaseAltsFlat = tickersBaseAlts.reduce((partial_list, a) => [...partial_list, ...a], []);
+    // Note: Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
     //[] -> [`USDT/USD`, `USDT/BTC`]
     let tickersAltsToBase = baseCurrencyAlts.map((alt) => `${alt}/${baseCurrency}`);
-    // let baseCurrencyAltToBaseCurrencyTicker = `${baseCurrencyAlt}/${baseCurrency}`;
     //[] -> [`XRP/USD`, `LTC/USD`,... `XRP/USDT`, `LTC/USDT`..., `XRP/BTC`, `LTC/BTC`...]
     let tickersFull = [...new Set([...tickersBase, ...tickersBaseAltsFlat, ...tickersAltsToBase])];     // deduplication with Set
     // Map [`XRP` -> `XRP/USD`]
@@ -309,43 +400,8 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
     let volsEx = {};    // arrays of volumes for each ticker (in base pair numeraire)
     // let formattedSingleRawData = {};
     try {
-        // let allRawData: any[] = [];
-        // const pxPromises: any[] = [];
         let bulkPxPromises: any[] = [];
         let singlePxPromises: any[] = [];
-        // for (let i = 0; i < exchangesObjs.length; i++) {
-        //     if (exchangesObjs[i].has[`fetchTickers`])
-        //         pxPromises.push(exchangesObjs[i].fetchTickers(tickersFull));
-        //     else if (exchangesObjs[i].id.toLowerCase() == `coinbasepro`)
-        //     {
-        //         for(let j = 0; j < tickersFull.length; j++)
-        //         {
-        //             try {
-        //                 if(tickersFull[j] != "USD/USDT" && tickersFull[j] != "USDT/USD")
-        //                     formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j].replace("USDT", "USD"));   
-        //                 else
-        //                     formattedSingleRawData[tickersFull[j]] = await exchangesObjs[i].fetchTicker(tickersFull[j]);   
-        //             } catch (err: unknown) {
-        //                 if (err instanceof Error) {
-        //                     if(err.name!='BadSymbol')
-        //                         console.log(err); //ignore BadSymbol
-        //                   }
-        //             }
-        //         }
-        //         allRawData.push(formattedSingleRawData);  
-        //     }
-        //     else
-        //         console.error("Unhandled exchange: ", exchangesObjs[i].name);
-        // }
-        // // Get async Promise API call objects
-        // //let pxPromises = exchangesObjs.map((ex, idx) => ex.fetchTickers(tickersFull));
-
-        // // Resolve those Promises concurrently
-        // // This takes by far the longest time in this function, roughly 2 to 2.5 seconds
-    
-        // let tempData = await Promise.all(pxPromises);
-        // tempData.map(x => allRawData.push(x));
-
 
         // Bulk fetch exchanges
         let bulkFetchIdxs = exchangesObjs.map((ex, idx) => ex.has[`fetchTickers`] || false);
@@ -360,8 +416,6 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         for (let singleTickerEx of singleTickerExs) {
             if (singleTickerEx.id == 'coinbasepro') {
                 let singleTickerExSupportedTickers = tickersFull.filter((ticker, idx) => singleTickerEx.symbols.includes(ticker))
-                // let singleTickerExSupportedTickers = tickersFull.filter((ticker, idx) => Object.keys(singleTickerEx.markets).includes(ticker))
-
                 // TODO: this may cause too many request issues, may need to loop individually over each ticker as we did previously
                 // push rather than concat to have parallel structure as bulkPxPromises of a separate array for each exchange
                 singlePxPromises.push(singleTickerExSupportedTickers.map((ticker, idx) => singleTickerEx.fetchTicker(ticker)))
@@ -390,9 +444,7 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
 
         let tickersRet: any[] = [];
         for (let i = 0; i < allRawData.length; i++) {
-            //console.log(allRawData[i]);
             tickersRet = Object.keys(allRawData[i]); // will typically be missing a bunch of keys
-            //console.log("tickerRet:", tickersRet);
             // Iterate through all price pairs for the same asset (XRP/USD, XRP/USDT, XRP/BTC...)
             // and convert them to USD based and push them into an array. After we iterate through
             // the entire array, we convert them to a single volume weighted average.
@@ -424,91 +476,50 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         // Get to volume weighted price for each asset
         // TODO: alternative 1: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
         // TODO: add an exchange-level weighting factor, s.t. weight = volume * exchange_factor, to reflect exchange quality of volume
+        // let pxsAll = {}
+        // let pxsAll = new Map(basesCombined.map((base, idx) => [base, {}]));
+        var pxsAll = {};
+        basesCombined.forEach(base => pxsAll[base] = {});
         let prices = assets.map((asset, idx) => {
             let pxsBase = [];
             let volsBase = [];
             // convert each set of quotes for each base to global base (USD)
             for (let base of basesCombined) {
                 let ticker = `${asset}/${base}`;
-                // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
-                pxsBase.push (...math.dotMultiply(pxsEx[ticker] || [], baseAltPxsMap.get(base)));
-                if (volumeWeight) {
-                    volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
-                } else {
-                    volsBase.push(...(new Array((pxsEx[ticker] || []).length).fill(1)));
+                if ((pxsEx[ticker] || []).length > 0) {
+                    pxsBase.push(...math.dotMultiply(pxsEx[ticker] || [], baseAltPxsMap.get(base)));
+                    if (volumeWeight) {
+                        volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
+                        pxsAll[base][asset] = math.dot(pxsEx[ticker], volsEx[ticker]) / math.sum(volsEx[ticker]);
+                    } else {
+                        volsBase.push(...(new Array((pxsEx[ticker] || []).length).fill(1)));
+                        pxsAll[base][asset] = math.mean(pxsEx[ticker]);
+                    }
+                } else if (asset==base) {
+                    pxsAll[base][asset] = 1;
+                } else {        
+                    pxsAll[base][asset] = NaN;
                 }
             }
             if (pxsBase.length == 0) {
                 // no prices for the asset on the given exchanges, return NaN
-                return NaN
+                return NaN;
             } else {
                 return math.dot(pxsBase, volsBase) / math.sum(volsBase);
             }
         });
 
-        // Temporary hacky work around for case when no prices are returned for an asset
-        // assets.filter((asset, idx)  => isNaN(prices[idx]))
-        for (let i=0; i<assets.length; i++) {
-            if (isNaN(prices[i])) {
-                let ccPrice = await getPricesCryptoCompare([assets[i]]);
-                prices[i] = ccPrice[0];
-            }
-        }
+        // // Temporary hacky work around for case when no prices are returned for an asset
+        // // assets.filter((asset, idx)  => isNaN(prices[idx]))
+        // for (let i=0; i<assets.length; i++) {
+        //     if (isNaN(prices[i])) {
+        //         let ccPrice = await getPricesCryptoCompare([assets[i]]);
+        //         prices[i] = ccPrice[0];
+        //     }
+        // }
 
-        return prices;
+        return [prices, pxsAll];
 
-
-
-
-        // // let prices = [];
-        // // for(let j = 0; j < assets.length; j++) {
-        // //     let pxsBase = [];
-        // //     let volsBase = [];
-        // //     // convert each set of quotes for each base to global base (USD)
-        // //     for (let base of basesCombined) {
-        // //         let loopvolumeWeight = volumeWeight;
-        // //         let ticker = `${assets[j]}/${base}`;
-        // //         // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
-        // //         if (pxsEx[ticker] == null) {
-        // //             //speical handling for tickers goes here
-        // //             if (assets[j] == 'DGB') {
-        // //                 let asset_array = []
-        // //                 asset_array.push(assets[j]);
-        // //                 let temp =  await getPricesCryptoCompare(asset_array);
-        // //                 pxsBase.push(temp[0]);
-        // //                 volsBase.push(...(new Array(1).fill(1)));       
-        // //                 continue;        
-        // //             } else {
-        // //                 //add more speical pair handling
-        // //                 console.log(ticker, "has no price nor special handling, defaulting to cryptocompare (bad)");
-        // //                 let asset_array = []
-        // //                 asset_array.push(assets[j]);
-        // //                 let temp =  await getPricesCryptoCompare(asset_array);
-        // //                 pxsBase.push(temp[0]);
-        // //                 volsBase.push(...(new Array(1).fill(1)));    
-        // //                 continue;           
-        // //             }
-        // //         }
-        // //         else if (
-        // //                 (volsEx[ticker] == null && loopvolumeWeight) || 
-        // //                 (pxsEx[ticker].length != volsEx[ticker].length)
-        // //             )
-        // //         {
-        // //             //if we reach here that means we have price but no volume.
-        // //             console.log(ticker, "has no volume or lengths dont match");
-        // //             loopvolumeWeight = false;
-        // //         }
-        // //         pxsBase.push (...math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base)));
-        // //         if (loopvolumeWeight) {
-        // //             volsBase.push(...math.dotMultiply(volsEx[ticker] , baseAltPxsMap.get(base)));
-        // //         } else {
-        // //             volsBase.push(...(new Array((pxsEx[ticker] ).length).fill(1)));
-        // //         }
-        // //     }
-        // //     prices.push( math.dot(pxsBase, volsBase) / math.sum(volsBase));
-        // // }
-        
-        // return prices;
         // // TODO: alternative 2: allRawData.map()
         // combinedExs = bulkTickerExs.concat(singleTickerExs)
         // let quotesFlat = allRawData.map((exRets, i) => {
@@ -526,28 +537,14 @@ async function getPricesCCXT(assets: string[]): Promise<number[]>{
         //     });
         // }).reduce((partial_list, a) => [...partial_list, ...a], []);
 
-
-        // tickersFull.map(...)
-
-        // // pxsRawEx = allRawData[i];
-        // // tickersRet = Object.keys(pxsRawEx);
-        // // pxsEx = new Map(tickersRet.map((ticker) => [ticker, (pxsRawEx[ticker].bid + pxsRawEx[ticker].ask)/2] ));
-        // // pxsExList = tickersBase.map((ticker) => pxsEx.get(ticker))    // will have lots of undefineds
-        // // pxsExList = tickersBase.map((ticker) => pxsEx.get(ticker))    // will have lots of undefineds
-
-        // // console.log("pxsEx: ", pxsEx);
-        // var finalizedPriceMap = {};
-        // Object.entries(pxsEx).map(([key, value]) => finalizedPriceMap[key] = math.mean(value));
-        // // var priceProd = assets.map((sym,i) => Math.round(finalizedPriceMap[`${sym}/${baseCurrency}`]  * 10**decimals[i])); 
-        // var prices = assets.map((sym,i) => finalizedPriceMap[`${sym}/${baseCurrency}`]); 
-        // return prices;
     }
     catch(error){
         console.log(`CCXT API error:\n  ${error}`);
-        return assets.map((sym, i) => -1);
+        return [assets.map((sym, i) => -1), {}];
     }
 }
 
+// TODO: Add in PRICE_SOURCE_BACKUP
 
 // CryptoCompare price API
 // **Issue**: poor decimal precision
@@ -882,25 +879,26 @@ async function main() {
     console.log(`\tsubmitPeriod (secs): ${submitPeriod}`);
     console.log(`\trevealPeriod (secs): ${revealPeriod}`);
 
-    const checkPrices = true;
     if (checkPrices) {
         // Test: get prices for symbols
         var initialEpoch = Math.floor(((await getTime(web3)) - firstEpochStartTime) / submitPeriod);
         // var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
-        var pxsProd = await getPrices(initialEpoch, symbols, decimals, priceSource);    
-        var pxsCcxt = await getPricesCCXT(symbols);
-        var pxsCC   = await getPricesCryptoCompare(symbols);
-        var pxsCApi = await getPricesCoinApi(symbols);
-        var pxsCMC  = await getPricesCMC(symbols);
-        var pxsCG   = await getPricesCoinGecko(symbols);
+        var pxsModel = await getPricesModel_USD_USDT_Weighted(initialEpoch, symbols);
+        var pxsProd  = await getPrices(initialEpoch, symbols, decimals, priceSource);    
+        var pxsCcxt  = (await getPricesCCXT(symbols))[0];
+        var pxsCC    = await getPricesCryptoCompare(symbols);
+        var pxsCApi  = await getPricesCoinApi(symbols);
+        var pxsCMC   = await getPricesCMC(symbols);
+        var pxsCG    = await getPricesCoinGecko(symbols);
         for (var i in ftsoSupportedIndices) {
             console.log(`${symbols[i]}:`);
-            console.log(`\tCCXT:          ${pxsCcxt[i]}`);
-            console.log(`\tCryptoCompare: ${pxsCC  [i]}`);
-            console.log(`\tCoinAPI:       ${pxsCApi[i]}`);
-            console.log(`\tCoinMarketCap: ${pxsCMC [i]}`);
-            console.log(`\tCoinGecko:     ${pxsCG  [i]}`);
-            console.log(`\tProduction Px: ${pxsProd[i]}`);
+            console.log(`\tModel Price:   ${pxsModel[i]}`);
+            console.log(`\tCCXT:          ${pxsCcxt [i]}`);
+            console.log(`\tCryptoCompare: ${pxsCC   [i]}`);
+            console.log(`\tCoinAPI:       ${pxsCApi [i]}`);
+            console.log(`\tCoinMarketCap: ${pxsCMC  [i]}`);
+            console.log(`\tCoinGecko:     ${pxsCG   [i]}`);
+            console.log(`\tProduction Px: ${pxsProd [i]}`);
         }
         console.log(`Price Source: ${priceSource}`)
     }
@@ -921,6 +919,7 @@ async function main() {
     // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
     var submitBuffer = submitBufferMin;              // Initial buffer for how many seconds before end of epoch we should start submission
     // var submitBufferMin = 18;           // Minimum buffer
+    var submitBufferMax = 45;           // Maximum buffer
     var submitTimes: Number[] = [];     // Record recent times to measure how much buffer we need
     var submitBufferStd = 3;            // How many stds (normal)
     // var submitBufferDecay = 0.999;      // Decay factor on each loop
@@ -1100,8 +1099,11 @@ async function main() {
         if (nSubmitTimes > submitBufferBurnIn && !constantBuffer) {
             // new submitBuffer in seconds
             submitBuffer = submitBufferBase + submitMean + submitBufferStd*submitStd;
-            if(submitBuffer < submitBufferMin)
+            if (submitBuffer < submitBufferMin) {
                 submitBuffer = submitBufferMin;
+            } else if (submitBuffer > submitBufferMax) {
+                submitBuffer = submitBufferMax;
+            }
         }
         console.log(`   New:  ${submitBuffer}`);
         console.log(`   Mean: ${submitMean}`);
