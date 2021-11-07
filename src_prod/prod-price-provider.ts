@@ -566,8 +566,6 @@ async function getPricesCCXT(assets: string[]): Promise<[number[], {}]> {
         for (let singleTickerEx of singleTickerExs) {
             if (singleTickerEx.id == 'coinbasepro') {
                 let singleTickerExSupportedTickers = tickersFull.filter((ticker, idx) => singleTickerEx.symbols.includes(ticker))
-                // let singleTickerExSupportedTickers = tickersFull.filter((ticker, idx) => Object.keys(singleTickerEx.markets).includes(ticker))
-
                 // TODO: this may cause too many request issues, may need to loop individually over each ticker as we did previously
                 // push rather than concat to have parallel structure as bulkPxPromises of a separate array for each exchange
                 singlePxPromises.push(singleTickerExSupportedTickers.map((ticker, idx) => singleTickerEx.fetchTicker(ticker)))
@@ -596,9 +594,7 @@ async function getPricesCCXT(assets: string[]): Promise<[number[], {}]> {
 
         let tickersRet: any[] = [];
         for (let i = 0; i < allRawData.length; i++) {
-            //console.log(allRawData[i]);
             tickersRet = Object.keys(allRawData[i]); // will typically be missing a bunch of keys
-            //console.log("tickerRet:", tickersRet);
             // Iterate through all price pairs for the same asset (XRP/USD, XRP/USDT, XRP/BTC...)
             // and convert them to USD based and push them into an array. After we iterate through
             // the entire array, we convert them to a single volume weighted average.
