@@ -805,8 +805,8 @@ exchangesMarkets = await Promise.all(exchangesObjs.map((ex) => ex.load_markets()
 // let ticker = [sym, baseCurrency].join('/');
 
 baseCurrency = 'USD';
-// baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
-baseCurrencyAlts = [];   // enable multiple alternative bases
+baseCurrencyAlts = ['USDT', 'BTC'];   // enable multiple alternative bases
+// baseCurrencyAlts = [];   // enable multiple alternative bases
 basesCombined = [baseCurrency, ...baseCurrencyAlts];
 // baseCurrencyAlts = ['USDT',];   // enable multiple alternative bases
 // Only Kraken, Coinbase, and FTX has USDT/USD pair: https://coinmarketcap.com/currencies/tether/markets/
@@ -961,18 +961,29 @@ baseAltPxsMap.set(baseCurrency, 1);
 // Get to volume weighted price for each asset
 // TODO: alternative 1: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
 // TODO: add an exchange-level weighting factor, s.t. weight = volume * exchange_factor, to reflect exchange quality of volume
+volumeWeight = false
+pxsAll = {};
+basesCombined.forEach(base => pxsAll[base] = {});
 prices = assets.map((asset, idx) => {
     pxsBase = [];
     volsBase = [];
     // convert each set of quotes for each base to global base (USD)
     for (base of basesCombined) {
         ticker = `${asset}/${base}`;
-        // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
-        pxsBase.push (...math.dotMultiply(pxsEx[ticker] || [], baseAltPxsMap.get(base)));
-        if (volumeWeight) {
-            volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
+        if ((pxsEx[ticker] || []).length > 0) {
+            // pxsBase = [...pxsBase, ...((math.dotMultiply(pxsEx[ticker], baseAltPxsMap.get(base))) || []) ];
+            pxsBase.push (...math.dotMultiply(pxsEx[ticker] || [], baseAltPxsMap.get(base)));
+            if (volumeWeight) {
+                volsBase.push(...math.dotMultiply(volsEx[ticker] || [], baseAltPxsMap.get(base)));
+                pxsAll[base][asset] = math.dot(pxsEx[ticker], volsEx[ticker]) / math.sum(volsEx[ticker]);
+            } else {
+                volsBase.push(...(new Array((pxsEx[ticker] || []).length).fill(1)));
+                pxsAll[base][asset] = math.mean(pxsEx[ticker]);
+            }
+        } else if (asset==base) {
+            pxsAll[base][asset] = 1;
         } else {
-            volsBase.push(...(new Array((pxsEx[ticker] || []).length).fill(1)));
+            pxsAll[base][asset] = NaN;
         }
     }
     if (pxsBase.length == 0) {
@@ -982,6 +993,10 @@ prices = assets.map((asset, idx) => {
         return math.dot(pxsBase, volsBase) / math.sum(volsBase);
     }
 });
+
+
+
+
 
 
 
