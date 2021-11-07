@@ -199,21 +199,17 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
         return [];
     }
     // if we haven't initialized last price, start it off with -1s
-    // if (pricesLast[assetsUid].length == 0 && nAssets > 0) {
     if (!(assetsUid in pricesLast)) {
         pricesLast[assetsUid] = new Array(nAssets).fill(-1);
     }
     // Get prices
     try {
-        //// Could get multiple prices simultaneously using await Promise.all(...)
-        //// Ref: https://dev.to/raviojha/javascript-making-multiple-api-calls-the-right-way-2b29
         let prices, pxsAll;
         switch (priceSource) {
             case 'CCXT':
                 let ccxtRet = await getPricesCCXT(assets);
                 // [prices, pxsAll] 
                 prices = ccxtRet[0]
-                pxsAll = ccxtRet[1]
                 break;
             case 'CRYPTOCOMPARE':
                 prices = await getPricesCryptoCompare(assets);
@@ -227,6 +223,8 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
             case 'COINGECKO':
                 prices = await getPricesCoinGecko(assets);  // no API key needed
                 break;
+            case 'MODEL':
+                prices = await getPricesModel_USD_USDT_Weighted(epochId, assets)
             case 'ERROR':
                 // Error case for testing
                 prices = new Array(nAssets).fill(-1);
@@ -268,50 +266,48 @@ async function getPrices(epochId: number, assets: string[], decimals: number[], 
 }
 
 
-// // Get modeled price
-// async function getPricesModel_USD_USDT_Weighted(epochId: number, assets: string[], decimals: number[], priceSource: string): Promise<number[]>{
-//     var assetsUid = assets.join(',');   // key on asset list as unique identifier
-//     var nAssets = assets.length;
-//     if (nAssets == 0) {
-//         return [];
-//     }
-//     // if we haven't initialized last price, start it off with -1s
-//     // if (pricesLast[assetsUid].length == 0 && nAssets > 0) {
-//     if (!(assetsUid in pricesLast)) {
-//         pricesLast[assetsUid] = new Array(nAssets).fill(-1);
-//     }
-//     // Get prices
-//     try {
-//         //// Could get multiple prices simultaneously using await Promise.all(...)
-//         //// Ref: https://dev.to/raviojha/javascript-making-multiple-api-calls-the-right-way-2b29
-//         let prices, pxsAll;
-//         [prices, pxsAll] = await getPricesCCXT(assets);
-//         let ccPrices = await getPricesCryptoCompare(assets);
+// Get modeled price
+//   Model overview
+//   We want to find lambda s.t.
+//       Price = lambda * usd_price + (1 - lambda) * usdt_price
+//   Since people are clearly not converting from USDT to USD numeraire and just averaging USDT and USD prices
+//   Rearranging:
+//       Price = usdt_price + lambda * (usd_price - usdt_price)
+//       (Price - usdt_price) = lambda * (usd_price - usdt_price)
+//   Run regression without intercept to find least squares fit for lambda
+//   Price premium to USDT is some fraction of USD px's premium to USDT px
+//   Then need to test predicting price for period n using USDT and USD prices for period n plugged into 
+//   a model fitted on data through period n-1
+async function getPricesModel_USD_USDT_Weighted(epochId: number, assets: string[]): Promise<number[]>{
+    // Get prices
+    try {
+        let ccxtRet = await getPricesCCXT(assets);
+        // let ccxtPrices = ccxtRet[0];
+        let ccxtPxsAll = ccxtRet[1];
+        let ccPrices = await getPricesCryptoCompare(assets);
 
-
-
-
-
-//         var validPrice = prices[0] > 0;
-//         var pricesAdj = prices.map((p,i) => Math.round(p * 10**decimals[i]))
-//         // Check if price source function returned array of -1, signalling an error
-//         if (!validPrice) {
-//             // If invalid, return last valid pricing
-//             pricesAdj = pricesLast[assetsUid];
-//         } else {
-//             // store last prices
-//             pricesLast[assetsUid] = pricesAdj;
-//         }
-//         return pricesAdj;
-//     } catch(error){
-//         console.log(`Get prices error:\n  ${error}`);
-//         // return assets.map((sym, i) => -1);   // Return 0's, TOOD: update - maybe return last prices?
-//         // If invalid, return last valid pricing
-//         return pricesLast[assetsUid];
-//     }
-// }
-
-
+        let pxsUSDT = assets.map(a => ccxtPxsAll['USDT'][a]);
+        let useCcForUsd = true;
+        let pxsUSD;
+        // Option 1: Use CryptoCompare prices in lieu of direct USD prices (a bit more reliable)
+        if (useCcForUsd) {
+            pxsUSD = ccPrices;
+        }
+        // Option 2: USD prices
+        else {
+            pxsUSD = assets.map(a => ccxtPxsAll['USD'][a]);
+            pxsUSD = pxsUSD.map((value, idx) => isNaN(value) ? ccPrices[idx] : value);
+        }
+        let lambda = 0.5;   // default to simple average
+        let modelPrices = math.add(math.multiply(lambda, pxsUSD), math.multiply((1 - lambda), pxsUSDT));
+        return modelPrices;
+    } catch(error){
+        console.log(`Get prices error:\n  ${error}`);
+        // return assets.map((sym, i) => -1);   // Return 0's, TOOD: update - maybe return last prices?
+        // If invalid, return last valid pricing
+        return assets.map((sym, i) => -1);
+    }
+}
 
 
 function populateQuoteVolume(tickerData: any): any{
@@ -844,20 +840,22 @@ async function main() {
         // Test: get prices for symbols
         var initialEpoch = Math.floor(((await getTime(web3)) - firstEpochStartTime) / submitPeriod);
         // var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
-        var pxsProd = await getPrices(initialEpoch, symbols, decimals, priceSource);    
-        var pxsCcxt = await getPricesCCXT(symbols);
-        var pxsCC   = await getPricesCryptoCompare(symbols);
-        var pxsCApi = await getPricesCoinApi(symbols);
-        var pxsCMC  = await getPricesCMC(symbols);
-        var pxsCG   = await getPricesCoinGecko(symbols);
+        var pxsModel = await getPricesModel_USD_USDT_Weighted(initialEpoch, symbols);
+        var pxsProd  = await getPrices(initialEpoch, symbols, decimals, priceSource);    
+        var pxsCcxt  = (await getPricesCCXT(symbols))[0];
+        var pxsCC    = await getPricesCryptoCompare(symbols);
+        var pxsCApi  = await getPricesCoinApi(symbols);
+        var pxsCMC   = await getPricesCMC(symbols);
+        var pxsCG    = await getPricesCoinGecko(symbols);
         for (var i in ftsoSupportedIndices) {
             console.log(`${symbols[i]}:`);
-            console.log(`\tCCXT:          ${pxsCcxt[i]}`);
-            console.log(`\tCryptoCompare: ${pxsCC  [i]}`);
-            console.log(`\tCoinAPI:       ${pxsCApi[i]}`);
-            console.log(`\tCoinMarketCap: ${pxsCMC [i]}`);
-            console.log(`\tCoinGecko:     ${pxsCG  [i]}`);
-            console.log(`\tProduction Px: ${pxsProd[i]}`);
+            console.log(`\tModel Price:   ${pxsModel[i]}`);
+            console.log(`\tCCXT:          ${pxsCcxt [i]}`);
+            console.log(`\tCryptoCompare: ${pxsCC   [i]}`);
+            console.log(`\tCoinAPI:       ${pxsCApi [i]}`);
+            console.log(`\tCoinMarketCap: ${pxsCMC  [i]}`);
+            console.log(`\tCoinGecko:     ${pxsCG   [i]}`);
+            console.log(`\tProduction Px: ${pxsProd [i]}`);
         }
         console.log(`Price Source: ${priceSource}`)
     }
