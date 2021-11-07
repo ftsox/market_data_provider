@@ -18,6 +18,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@google-cloud/bigquery": "^5.9.1",
     "@openzeppelin/test-helpers": "0.5.11",
     "@tsconfig/node14": "^1.0.0",
     "@types/jest": "^26.0.20",
