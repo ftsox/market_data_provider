@@ -15,7 +15,13 @@ const nodemailer = require("nodemailer");
 import { time } from '@openzeppelin/test-helpers';  // TODO: get rid of this
 import { exit } from 'process';
 
-
+console.log=(function() {
+    var orig=console.log;
+    return function(text) {
+        orig(`${process.pid} ${text}`);
+    };
+  })();  
+  
 class ftsoConfig {
     URL0: string;
     URL1: string;
