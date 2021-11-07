@@ -41,14 +41,15 @@ class ftsoConfig {
     baseCurrencyAlts: string[];
     baseCurrencyLower: string;
     exchanges: string[];
-    web3?: any;
-    web3_backup?: any;
+    web3: any;
+    web3_backup: any;
     isTestnet: boolean;
     priceSubmitterAddr: string;
     priceProviderPrivateKey: string;
-    transporter?: any;
+    transporter: any;
     checkPrices: boolean;
-    exchangesObjs?: any;
+    exchangesObjs: any;
+    priceProviderAccount: any;
 
     public ftsoConfig() {}
     
@@ -56,92 +57,186 @@ class ftsoConfig {
  
 let cConfig  = new ftsoConfig();
 let nConfig = new ftsoConfig();
-
-function parseConfigEnv(cConfig: ftsoConfig)
+let shouldInitialize: boolean;
+function parseConfigEnv(config: ftsoConfig)
 {
-    cConfig.URL0 = process.env.RPC_NODE_URL0;
-    cConfig.URL1 = process.env.RPC_NODE_URL1;
-    cConfig.privKey = process.env.FTSO_PRIVATE_KEY ?? '';
+    config.URL0 = process.env.RPC_NODE_URL0;
+    config.URL1 = process.env.RPC_NODE_URL1;
+    config.privKey = process.env.FTSO_PRIVATE_KEY ?? '';
     const web3ProviderOptions = {
         // Need a lower timeout than the default of 750 seconds in case it hangs
         timeout: 60 * 1000, // milliseconds,
     };
-    cConfig.web3 = new Web3(
-        new Web3.providers.HttpProvider(cConfig.URL0, web3ProviderOptions)
+    config.web3 = new Web3(
+        new Web3.providers.HttpProvider(config.URL0, web3ProviderOptions)
     );
-    cConfig.web3_backup = new Web3(
-        new Web3.providers.HttpProvider(cConfig.URL1, web3ProviderOptions)
+    config.web3_backup = new Web3(
+        new Web3.providers.HttpProvider(config.URL1, web3ProviderOptions)
     );
     // var baseCurrency = 'USD';
-    cConfig.baseCurrency = process.env.BASE_CURRENCY || 'USD';
-    cConfig.baseCurrencyAltsRaw = process.env.BASE_CURRENCY_ALTS || '';   // enable multiple alternative bases
-    if (cConfig.baseCurrencyAltsRaw.length == 0) {
-        cConfig.baseCurrencyAlts = []; 
+    config.baseCurrency = process.env.BASE_CURRENCY || 'USD';
+    config.baseCurrencyAltsRaw = process.env.BASE_CURRENCY_ALTS || '';   // enable multiple alternative bases
+    if (config.baseCurrencyAltsRaw.length == 0) {
+        config.baseCurrencyAlts = []; 
     } else {
-        cConfig.baseCurrencyAlts = cConfig.baseCurrencyAltsRaw.split(', ');
+        config.baseCurrencyAlts = config.baseCurrencyAltsRaw.replace(/\s/g,'').split(',');
     }
-    cConfig.baseCurrencyLower = cConfig.baseCurrency.toLowerCase();
-    cConfig.priceSource = process.env.PRICE_SOURCE || '';
-    cConfig.exchangeSource = process.env.EXCHANGE_SOURCE || '';
-    cConfig.exchanges = cConfig.exchangeSource.split(', ');
-    cConfig.exchanges.map(exchange => exchange.split(" ").join(""));
-    cConfig.volumeWeight = (process.env.VOLUME_WEIGHT || 'FALSE') == 'TRUE' ? true : false;
-    cConfig.useSystemTime = (process.env.USE_SYSTEM_TIME || 'FALSE') == 'TRUE' ? true : false;
-    cConfig.constantBuffer = (process.env.CONSTANT_BUFFER || 'FALSE') == 'TRUE' ? true : false;
-    cConfig.submitBufferMin = parseInt(process.env.SUBMIT_BUFFER_MIN || '18');
-    cConfig.convertUsdt = (process.env.CONVERT_USDT || 'FALSE') == 'TRUE' ? true : false;
-    cConfig.cc_api_key = process.env.CC_API_KEY;
-    cConfig.coinapi_key = process.env.COINAPI_KEY;
-    cConfig.cmc_pro_api_key = process.env.CMC_PRO_API_KEY;
-    cConfig.network = process.env.NETWORK;
-    if (cConfig.network == 'songbird') {
+    config.baseCurrencyLower = config.baseCurrency.toLowerCase();
+    config.priceSource = process.env.PRICE_SOURCE || '';
+    config.exchangeSource = process.env.EXCHANGE_SOURCE || '';
+    config.exchanges = config.exchangeSource.replace(/\s/g,'').split(',');
+    config.volumeWeight = (process.env.VOLUME_WEIGHT || 'FALSE') == 'TRUE' ? true : false;
+    config.useSystemTime = (process.env.USE_SYSTEM_TIME || 'FALSE') == 'TRUE' ? true : false;
+    config.constantBuffer = (process.env.CONSTANT_BUFFER || 'FALSE') == 'TRUE' ? true : false;
+    config.submitBufferMin = parseInt(process.env.SUBMIT_BUFFER_MIN || '18');
+    config.convertUsdt = (process.env.CONVERT_USDT || 'FALSE') == 'TRUE' ? true : false;
+    config.cc_api_key = process.env.CC_API_KEY;
+    config.coinapi_key = process.env.COINAPI_KEY;
+    config.cmc_pro_api_key = process.env.CMC_PRO_API_KEY;
+    config.network = process.env.NETWORK;
+    if (config.network == 'songbird') {
         // Songbird config
-        cConfig.isTestnet = false;
-    } else if (cConfig.network == 'flare') {
+        config.isTestnet = false;
+    } else if (config.network == 'flare') {
         // Flare config
-        cConfig.isTestnet = false;
-    } else if (cConfig.network == 'localhost') {
-        cConfig.isTestnet = true;
+        config.isTestnet = false;
+    } else if (config.network == 'localhost') {
+        config.isTestnet = true;
     } else {
         // default assume prod
-        cConfig.isTestnet = false;
+        config.isTestnet = false;
     }
-    if (cConfig.isTestnet) {
-        cConfig.priceSubmitterAddr = '0x7c2C195CD6D34B8F845992d380aADB2730bB9C6F';
+    if (config.isTestnet) {
+        config.priceSubmitterAddr = '0x7c2C195CD6D34B8F845992d380aADB2730bB9C6F';
         // Just the first from autogenerated accounts
-        cConfig.priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122";
+        config.priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122";
     } else {
-        cConfig.priceSubmitterAddr = '0x1000000000000000000000000000000000000003';
+        config.priceSubmitterAddr = '0x1000000000000000000000000000000000000003';
     }
 
-    cConfig.gmail_user = process.env.GMAIL_USER || '';
-    cConfig.error_mail_list = process.env.ERROR_MAIL_LIST ||'';
-
+    config.gmail_user = process.env.GMAIL_USER || '';
+    config.error_mail_list = process.env.ERROR_MAIL_LIST ||'';
+    config.gmail_password = process.env.GMAIL_PASSWORD || '';
         // Email for notifications
     // create reusable transporter object using the default SMTP transport
-    cConfig.transporter = nodemailer.createTransport({
+    config.transporter = nodemailer.createTransport({
         host: "smtp.gmail.com",
         port: 465,
         secure: true, // true for 465, false for other ports
         auth: {
-            user: cConfig.gmail_user,
-            pass: cConfig.error_mail_list
+            user: config.gmail_user,
+            pass: config.gmail_password
         },
     });
-    cConfig.checkPrices = (process.env.CHECK_PRICES || 'FALSE') == 'TRUE' ? true : false;
+    config.checkPrices = (process.env.CHECK_PRICES || 'FALSE') == 'TRUE' ? true : false;
 
-    cConfig.exchangesObjs = cConfig.exchanges.map((ex) => new ccxt[ex]({}));
-    var exchangesMarkets = (async () => { await Promise.all(cConfig.exchangesObjs.map((ex) => ex.load_markets())) }) ()
+    config.exchangesObjs = config.exchanges.map((ex) => new ccxt[ex]({}));
+    var exchangesMarkets = (async () => { await Promise.all(config.exchangesObjs.map((ex) => ex.load_markets())) }) ()
+
+    // Get Price Provider account based on the config
+    config.priceProviderAccount = config.web3.eth.accounts.privateKeyToAccount(`0x${config.privKey}`);
+    config.web3.eth.accounts.wallet.add(config.priceProviderAccount);
+    config.web3.eth.defaultAccount = config.priceProviderAccount.address;
+    config.web3_backup.eth.accounts.wallet.add(config.priceProviderAccount);
+    config.web3_backup.eth.defaultAccount = config.priceProviderAccount.address;
     
 }
-function parseConfigURL()
+function parseConfigURL(config: ftsoConfig, request: any)
 {
+    try{
+    config.URL0 = request.query.rpc_node_url0 ?? '';
+    config.URL1 = request.query.rpc_node_url1 ?? '';
+    config.privKey = request.query.ftso_private_key ?? '';
 
+    // var baseCurrency = 'USD';
+    config.baseCurrency = request.query.base_currency || 'USD';
+    config.baseCurrencyAltsRaw = request.query.base_currency_alts || '';   // enable multiple alternative bases
+    if (config.baseCurrencyAltsRaw.length == 0) {
+        config.baseCurrencyAlts = []; 
+    } else {
+        config.baseCurrencyAlts = config.baseCurrencyAltsRaw.replace(/\s/g,'').split(',');
+    }
+    config.baseCurrencyLower = config.baseCurrency.toLowerCase();
+    config.priceSource = request.query.price_source || '';
+    config.exchangeSource = request.query.exchange_source || '';
+    config.exchanges = config.exchangeSource.replace(/\s/g,'').split(',');
+    config.volumeWeight = true;
+    config.useSystemTime = false;
+    config.constantBuffer = (request.query.constant_buffer || 'FALSE') == 'TRUE' ? true : false;
+    config.submitBufferMin = parseInt(request.query.submit_buffer_min || '18');
+    config.convertUsdt = (request.query.convert_usdt || 'FALSE') == 'TRUE' ? true : false;
+    config.cc_api_key = request.query.cc_api_key;
+    config.coinapi_key = request.query.coinapi_key;
+    config.cmc_pro_api_key = request.query.cmc_pro_api_key;
+    config.network = request.query.network;
+    if (config.network == 'songbird') {
+        // Songbird config
+        config.isTestnet = false;
+    } else if (config.network == 'flare') {
+        // Flare config
+        config.isTestnet = false;
+    } else if (config.network == 'localhost') {
+        config.isTestnet = true;
+    } else {
+        // default assume prod
+        config.isTestnet = false;
+    }
+    if (config.isTestnet) {
+        config.priceSubmitterAddr = '0x7c2C195CD6D34B8F845992d380aADB2730bB9C6F';
+        // Just the first from autogenerated accounts
+        config.priceProviderPrivateKey = "0xc5e8f61d1ab959b397eecc0a37a6517b8e67a0e7cf1f4bce5591f3ed80199122";
+    } else {
+        config.priceSubmitterAddr = '0x1000000000000000000000000000000000000003';
+    }
+
+    config.gmail_user = request.query.gmail_user || '';
+    config.error_mail_list = request.query.error_mail_list ||'';
+    config.gmail_password = request.query.gmail_password || '';
+        // Email for notifications
+   
+    config.checkPrices = (request.query.check_prices || 'FALSE') == 'TRUE' ? true : false;
+}
+    catch (err)
+    {
+        console.log(err);
+    }
+
+    
 }
 function loadConfig(config: ftsoConfig)
 {
+     // create reusable transporter object using the default SMTP transport
+     config.transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true, // true for 465, false for other ports
+        auth: {
+            user: config.gmail_user,
+            pass: config.gmail_password
+        },
+    });
 
-   
+    const web3ProviderOptions = {
+        // Need a lower timeout than the default of 750 seconds in case it hangs
+        timeout: 60 * 1000, // milliseconds,
+    };
+    config.web3 = new Web3(
+        new Web3.providers.HttpProvider(config.URL0, web3ProviderOptions)
+    );
+    config.web3_backup = new Web3(
+        new Web3.providers.HttpProvider(config.URL1, web3ProviderOptions)
+    );
+
+    config.exchangesObjs = config.exchanges.map((ex) => new ccxt[ex]({}));
+    var exchangesMarkets = (async () => { await Promise.all(config.exchangesObjs.map((ex) => ex.load_markets())) }) ()
+
+    // Get Price Provider account based on the config
+    config.priceProviderAccount = config.web3.eth.accounts.privateKeyToAccount(`0x${config.privKey}`);
+    config.web3.eth.accounts.wallet.add(config.priceProviderAccount);
+    config.web3.eth.defaultAccount = config.priceProviderAccount.address;
+    config.web3_backup.eth.accounts.wallet.add(config.priceProviderAccount);
+    config.web3_backup.eth.defaultAccount = config.priceProviderAccount.address;
+    cConfig = config;
 }
 /*
     Helper Functions
@@ -525,7 +620,7 @@ async function getPricesCoinApi(assets: string[]): Promise<number[]>{
 // Has a 60 second cache per the above, so not a very good option
 async function getPricesCMC(assets: string[]): Promise<number[]>{
     // Get prices
-    const cmcKey = process.env.CMC_PRO_API_KEY;
+    const cmcKey = cConfig.cmc_pro_api_key;
     const cmcUrl = `https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest`;
     const requestOptions = {
         method: 'GET',
@@ -627,7 +722,7 @@ console.log(`    volumeWeight      ${config.volumeWeight     }`);
 console.log(`    useSystemTime     ${config.useSystemTime    }`);
 console.log(`    constantBuffer    ${config.constantBuffer   }`);
 console.log(`    submitBufferMin   ${config.submitBufferMin  }`);
-console.log(`    providerAccount   ${config.web3.eth.accounts.privateKeyToAccount(`0x${cConfig.privKey}`).address}`);
+console.log(`    providerAccount   ${config.web3.eth.accounts.privateKeyToAccount(`0x${config.privKey}`).address}`);
 console.log(`    convertUsdt   ${config.convertUsdt  }`);
 console.log(`    gmail_user   ${config.gmail_user  }`);
 console.log(`    error_mail_list   ${config.error_mail_list  }`);
@@ -643,6 +738,7 @@ console.log(`    submitBufferMin   ${config.submitBufferMin  }`);
 */
 
 async function main() {
+    shouldInitialize = true;
     // Express.js server for monitoring
     const express = require('express');
     const app = express();
@@ -658,7 +754,15 @@ async function main() {
         var name = request.query.name;
         console.log('id:'+id);
         console.log('name:'+name);
-        response.send(id)
+        response.send('id')
+      })
+      
+      app.get('/updateconfig', function(request, response) {
+        var id = request.query.id;
+        parseConfigURL(nConfig, request);
+        shouldInitialize=true;
+        printConfig(nConfig);
+        response.send('FTSO Config update complete - reinitializing...');
       })
 
     const port = process.env.PORT || 8080;
@@ -666,198 +770,205 @@ async function main() {
         console.log('FTSO Listening on', port);
     });
 
-    parseConfigEnv(cConfig);
+    parseConfigEnv(nConfig);
 
-    printConfig(cConfig);
-
-
-
-    // Times
-    console.log(`\n\n\nStarting FTSO provider on ${cConfig.isTestnet ? 'testnet' : 'mainnet'}`);
-    console.log(`\tStart time: ${Date()}`); 
-    console.log(`Time check:`);
-    console.log(`\tChain time:  ${await getTime(cConfig.web3)}`);
-    console.log(`\tSystem time: ${(new Date()).getTime() / 1000}`);
-
-    const priceSubmitterAbi = require("./priceSubmitter.json");
-    const MockFtsoRegistry = require("./MockFtsoRegistry.json");
-    const MockVoterWhitelister = require("./MockVoterWhitelister.json");
-    const MockFtso = require("./MockNpmFtso.json")
-    const priceSubmitterContract = new cConfig.web3.eth.Contract(JSON.parse(JSON.stringify(priceSubmitterAbi)), cConfig.priceSubmitterAddr);
-    const ftsoRegistry = new cConfig.web3.eth.Contract(JSON.parse(JSON.stringify(MockFtsoRegistry)), await priceSubmitterContract.methods.getFtsoRegistry().call());
-    const voterWhitelister = new cConfig.web3.eth.Contract(JSON.parse(JSON.stringify(MockVoterWhitelister)), await priceSubmitterContract.methods.getVoterWhitelister().call());
-    
-    // Get Price Provider account based on the config
-    const priceProviderAccount = cConfig.web3.eth.accounts.privateKeyToAccount(`0x${cConfig.privKey}`);
-    cConfig.web3.eth.accounts.wallet.add(priceProviderAccount);
-    cConfig.web3.eth.defaultAccount = priceProviderAccount.address;
-
-    // Get balance of addresses
-    var sgbBalance = fromWei((await cConfig.web3.eth.getBalance(priceProviderAccount.address)).toString());
-    console.log(`FTSO provider address: ${priceProviderAccount.address}`);
-    console.log(`          SGB Balance: ${sgbBalance}`);
+    printConfig(nConfig);
 
 
-    console.log(`Addresses:`)
-    console.log(`\tpriceSubmitter:   ${priceSubmitterContract.options.address}`)    // 0x1000000000000000000000000000000000000003   
-    console.log(`\tftsoRegistry:     ${ftsoRegistry.options.address}`)              // 0x6D222fb4544ba230d4b90BA1BfC0A01A94E6cB23
-    console.log(`\tvoterWhitelister: ${voterWhitelister.options.address}`)          // 0xa76906EfBA6dFAe155FfC4c0eb36cDF0A28ae24D
-
-    // Get indices for specific symbols
-    // const symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
-    // Note: this can be replaced by a single call based on live contract
-
-    const ftsoSupportedIndices_ = await ftsoRegistry.methods.getSupportedIndices().call();
-    const ftsoSupportedIndices = ftsoSupportedIndices_.map(idx => (parseInt(idx)));
-    const symbols: string[] = await Promise.all(
-        ftsoSupportedIndices.map(async idx => await ftsoRegistry.methods.getFtsoSymbol(idx).call())
-    );
-
-    const ftsos = await Promise.all(
-        symbols.map(async sym =>  new cConfig.web3.eth.Contract(JSON.parse(JSON.stringify(MockFtso)), await ftsoRegistry.methods.getFtsoBySymbol(sym).call()))
-    );
-
-    // Get addresses of the various FTSO contracts
-    const decimals = await Promise.all(
-        ftsos.map(async ftso => parseInt((await ftso.methods.ASSET_PRICE_USD_DECIMALS().call())))
-    );
-
-    // Get indices on which to submit
-    // const ftsoIndices = await Promise.all(
-    //     symbols.map(async sym => (await ftsoRegistry.getFtsoIndex(sym)).toNumber())
-    // )
-    const ftsoIndices = ftsoSupportedIndices;
-
-    // Combine them for easier future use
-    const currencyIndices = new Map(
-        symbols.map((c, i) => [c, ftsoIndices[i]]) 
-    );
-
-    // Get whitelists and counts
-    const ftsoWhitelists = await Promise.all(
-        ftsoSupportedIndices.map(async idx => await voterWhitelister.methods.getFtsoWhitelistedPriceProviders(idx).call())
-    ) as string[];
-    const ftsoWhitelistsCounts = new Map( 
-        symbols.map((c, i) => [c, ftsoWhitelists[i].length])
-    );
-    console.log(`FTSO Whitelist counts (before additional whitelisting):`);
-    console.log(ftsoWhitelistsCounts);
-
-    // Check to see if the account is not whitelisted for any FTSO
-    // Saves on gas and time to not call whitelister contract if we're already whitelisted
-    const includedInWhitelists = ftsoIndices.map(i => ftsoWhitelists[i].indexOf(priceProviderAccount.address) >= 0);
-    const numWhitelistedFtsos = includedInWhitelists.filter(x => x).length;
-    if (numWhitelistedFtsos < ftsoIndices.length) {
-        console.log(`Need to whitelist...`)
-        // Whitelist ourselves for EVERY ftso. This always works in mock case
-        // since there is no vote power calculation, so everyone gets whitelisted.
-        // In a real setting, this call can be quite expensive and can potentially fail
-        // if the voter does not have enough power or provide enough gas for the transaction
-        const tx = voterWhitelister.methods.requestFullVoterWhitelisting(priceProviderAccount.address).encodeABI();
-        var transactionNonce = await cConfig.web3.eth.getTransactionCount(priceProviderAccount.address);
-        var gasPrice = await cConfig.web3.eth.getGasPrice();
-        const transactionObject = {
-                chainId: 19,
-                nonce: cConfig.web3.utils.toHex(transactionNonce),
-                gasLimit: cConfig.web3.utils.toHex(8000000),
-                gasPrice: cConfig.web3.utils.toHex(gasPrice*1.2),
-                value: 0,
-                to: voterWhitelister.options.address,
-                from: priceProviderAccount.address,
-                data: tx
-            };
-            
-        const signedTx = await cConfig.web3.eth.accounts.signTransaction(transactionObject, `0x${cConfig.privKey}`);
-         
-        console.log(`\tWhitelisting: ${Date()}`);
-        const result = await cConfig.web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
-        // Check the whitelist for any changes
-        const whitelist = await priceSubmitterContract.methods.voterWhitelistBitmap(priceProviderAccount.address).call();
-
-        // Get whitelists and counts after getting whitelisted
-        const ftsoWhitelistsPost = await Promise.all(
-            ftsoSupportedIndices.map(async idx => await voterWhitelister.methods.getFtsoWhitelistedPriceProviders(idx).call())
-        ) as string[];
-        const ftsoWhitelistsCountsPost = new Map( 
-            symbols.map((c, i) => [c, ftsoWhitelistsPost[i].length])
-        );
-        console.log(`FTSO Whitelist counts (after whitelisting):`);
-        console.log(ftsoWhitelistsCountsPost);
-        // TODO(MCZ): set desired fee percentage
-        // https://songbird-explorer.flare.network/address/0xc5738334b972745067fFa666040fdeADc66Cb925/write-contract
-        // Use setDataProviderFeePercentage(bps)
-        // Then delegate to your FTSO provider address via 
-        // https://songbird-explorer.flare.network/address/0x02f0826ef6aD107Cfc861152B32B52fD11BaB9ED/write-contract
-    } else {
-        console.log(`Already whitelisted!`)
-    }
-
-    // Get submission config
-    // Assumes uniform across all FTSOs (was in original Flare code)
-    const {
-        0: firstEpochStartTimeBN,
-        1: submitPeriodBN,
-        2: revealPeriodBN,
-    } = (await ftsos[0].methods.getPriceEpochConfiguration().call());
-
-    const [firstEpochStartTime, submitPeriod, revealPeriod] = 
-        [firstEpochStartTimeBN, submitPeriodBN, revealPeriodBN].map(x => parseInt(x));
-
-    console.log(`FTSO parameters:`);
-    console.log(`\tfirstEpochStartTime: ${new Date(firstEpochStartTime * 1000)}`);
-    console.log(`\tsubmitPeriod (secs): ${submitPeriod}`);
-    console.log(`\trevealPeriod (secs): ${revealPeriod}`);
-
-    const checkPrices = true;
-    if (checkPrices) {
-        // Test: get prices for symbols
-        var initialEpoch = Math.floor(((await getTime(cConfig.web3)) - firstEpochStartTime) / submitPeriod);
-        // var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
-        var pxsProd = await getPrices(initialEpoch, symbols, decimals, cConfig.priceSource);    
-        var pxsCcxt = await getPricesCCXT(symbols);
-        var pxsCC   = await getPricesCryptoCompare(symbols);
-        var pxsCApi = await getPricesCoinApi(symbols);
-        var pxsCMC  = await getPricesCMC(symbols);
-        var pxsCG   = await getPricesCoinGecko(symbols);
-        for (var i in ftsoSupportedIndices) {
-            console.log(`${symbols[i]}:`);
-            console.log(`\tCCXT:          ${pxsCcxt[i]}`);
-            console.log(`\tCryptoCompare: ${pxsCC  [i]}`);
-            console.log(`\tCoinAPI:       ${pxsCApi[i]}`);
-            console.log(`\tCoinMarketCap: ${pxsCMC [i]}`);
-            console.log(`\tCoinGecko:     ${pxsCG  [i]}`);
-            console.log(`\tProduction Px: ${pxsProd[i]}`);
-        }
-        console.log(`Price Source: ${cConfig.priceSource}`)
-    }
-
-    // We submitPriceHashes with the current EpochID, 
-    // then once current Epoch is passed, within 90 seconds, we call revealPrices with EpochID 
-    // (the same Epoch as submitPriceHashes and it should be currentEpoch - 1)
-    // Since we only get rewarded if we're in the middle 50%, we need to make sure we submit at a good time
-    // Based on txs from providers (see list https://flaremetrics.io/ftso/providers), most submit within last 15 seconds of an epoch
-    // Reference functions in FtsoEpoch library:
-    //      _epochSubmitStartTime
-    //      _epochSubmitEndTime
-    //      _epochRevealEndTime;
-    var errorCount = 0;
-    // sleep until submitBuffer seconds before the end of the epoch to maximize chance of being in interquartile range
-    // Need a bit of buffer to let the other function calls return
-    // Should be based on when others submit their prices to make sure we're as close as possible to them
-    // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
-    var submitBuffer = cConfig.submitBufferMin;              // Initial buffer for how many seconds before end of epoch we should start submission
-    // var submitBufferMin = 18;           // Minimum buffer
-    var submitTimes: Number[] = [];     // Record recent times to measure how much buffer we need
-    var submitBufferStd = 3;            // How many stds (normal)
-    // var submitBufferDecay = 0.999;      // Decay factor on each loop
-    // var submitBufferIncrease = 1.1;     // Increase factor (multiple of std) for when we miss a submission window
-    var submitBufferBase = 3;           // Base buffer rate.
-    var submitBufferBurnIn = 5;        // Number of periods before adjusting submitBuffer
-    let now = await getTime(cConfig.web3);
-    let currentEpoch = 0;
-    let nextEpoch = currentEpoch;
-    let diff = 0;
+    var errorCount, submitBuffer, submitTimes, submitBufferStd, submitBufferBase, submitBufferBurnIn, now, currentEpoch, nextEpoch, diff;
+    var decimals;
+    var symbols: string[];
+    var firstEpochStartTime, submitPeriod, revealPeriod;
+    var priceSubmitterAbi, MockFtsoRegistry, MockVoterWhitelister, MockFtso, priceSubmitterContract, ftsoRegistry, voterWhitelister, ftsoIndices;
     while (true) {
+
+        if(shouldInitialize)
+        {
+            loadConfig(nConfig);
+            // Times
+            console.log(`\n\n\Initializing FTSO provider on ${cConfig.isTestnet ? 'testnet' : 'mainnet'}`);
+            console.log(`\tStart time: ${Date()}`); 
+            console.log(`Time check:`);
+            console.log(`\tChain time:  ${await getTime(cConfig.web3)}`);
+            console.log(`\tSystem time: ${(new Date()).getTime() / 1000}`);
+
+             priceSubmitterAbi = require("./priceSubmitter.json");
+             MockFtsoRegistry = require("./MockFtsoRegistry.json");
+             MockVoterWhitelister = require("./MockVoterWhitelister.json");
+             MockFtso = require("./MockNpmFtso.json")
+             priceSubmitterContract = new cConfig.web3.eth.Contract(JSON.parse(JSON.stringify(priceSubmitterAbi)), cConfig.priceSubmitterAddr);
+             ftsoRegistry = new cConfig.web3.eth.Contract(JSON.parse(JSON.stringify(MockFtsoRegistry)), await priceSubmitterContract.methods.getFtsoRegistry().call());
+             voterWhitelister = new cConfig.web3.eth.Contract(JSON.parse(JSON.stringify(MockVoterWhitelister)), await priceSubmitterContract.methods.getVoterWhitelister().call());
+            
+        
+
+            // Get balance of addresses
+            var sgbBalance = fromWei((await cConfig.web3.eth.getBalance(cConfig.priceProviderAccount.address)).toString());
+            console.log(`FTSO provider address: ${cConfig.priceProviderAccount.address}`);
+            console.log(`          SGB Balance: ${sgbBalance}`);
+
+
+            console.log(`Addresses:`)
+            console.log(`\tpriceSubmitter:   ${priceSubmitterContract.options.address}`)    // 0x1000000000000000000000000000000000000003   
+            console.log(`\tftsoRegistry:     ${ftsoRegistry.options.address}`)              // 0x6D222fb4544ba230d4b90BA1BfC0A01A94E6cB23
+            console.log(`\tvoterWhitelister: ${voterWhitelister.options.address}`)          // 0xa76906EfBA6dFAe155FfC4c0eb36cDF0A28ae24D
+
+            // Get indices for specific symbols
+            // const symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
+            // Note: this can be replaced by a single call based on live contract
+
+            const ftsoSupportedIndices_ = await ftsoRegistry.methods.getSupportedIndices().call();
+            const ftsoSupportedIndices = ftsoSupportedIndices_.map(idx => (parseInt(idx)));
+            symbols = await Promise.all(
+                ftsoSupportedIndices.map(async idx => await ftsoRegistry.methods.getFtsoSymbol(idx).call())
+            );
+
+            const ftsos = await Promise.all(
+                symbols.map(async sym =>  new cConfig.web3.eth.Contract(JSON.parse(JSON.stringify(MockFtso)), await ftsoRegistry.methods.getFtsoBySymbol(sym).call()))
+            );
+
+            // Get addresses of the various FTSO contracts
+            decimals = await Promise.all(
+                ftsos.map(async ftso => parseInt((await ftso.methods.ASSET_PRICE_USD_DECIMALS().call())))
+            );
+
+            // Get indices on which to submit
+            // const ftsoIndices = await Promise.all(
+            //     symbols.map(async sym => (await ftsoRegistry.getFtsoIndex(sym)).toNumber())
+            // )
+            ftsoIndices = ftsoSupportedIndices;
+
+            // Combine them for easier future use
+            const currencyIndices = new Map(
+                symbols.map((c, i) => [c, ftsoIndices[i]]) 
+            );
+
+            // Get whitelists and counts
+            const ftsoWhitelists = await Promise.all(
+                ftsoSupportedIndices.map(async idx => await voterWhitelister.methods.getFtsoWhitelistedPriceProviders(idx).call())
+            ) as string[];
+            const ftsoWhitelistsCounts = new Map( 
+                symbols.map((c, i) => [c, ftsoWhitelists[i].length])
+            );
+            console.log(`FTSO Whitelist counts (before additional whitelisting):`);
+            console.log(ftsoWhitelistsCounts);
+
+            // Check to see if the account is not whitelisted for any FTSO
+            // Saves on gas and time to not call whitelister contract if we're already whitelisted
+            const includedInWhitelists = ftsoIndices.map(i => ftsoWhitelists[i].indexOf(cConfig.priceProviderAccount.address) >= 0);
+            const numWhitelistedFtsos = includedInWhitelists.filter(x => x).length;
+            if (numWhitelistedFtsos < ftsoIndices.length) {
+                console.log(`Need to whitelist...`)
+                // Whitelist ourselves for EVERY ftso. This always works in mock case
+                // since there is no vote power calculation, so everyone gets whitelisted.
+                // In a real setting, this call can be quite expensive and can potentially fail
+                // if the voter does not have enough power or provide enough gas for the transaction
+                const tx = voterWhitelister.methods.requestFullVoterWhitelisting(cConfig.priceProviderAccount.address).encodeABI();
+                var transactionNonce = await cConfig.web3.eth.getTransactionCount(cConfig.priceProviderAccount.address);
+                var gasPrice = await cConfig.web3.eth.getGasPrice();
+                const transactionObject = {
+                        chainId: 19,
+                        nonce: cConfig.web3.utils.toHex(transactionNonce),
+                        gasLimit: cConfig.web3.utils.toHex(8000000),
+                        gasPrice: cConfig.web3.utils.toHex(gasPrice*1.2),
+                        value: 0,
+                        to: voterWhitelister.options.address,
+                        from: cConfig.priceProviderAccount.address,
+                        data: tx
+                    };
+                    
+                const signedTx = await cConfig.web3.eth.accounts.signTransaction(transactionObject, `0x${cConfig.privKey}`);
+                
+                console.log(`\tWhitelisting: ${Date()}`);
+                const result = await cConfig.web3.eth.sendSignedTransaction(signedTx.raw || signedTx.rawTransaction);
+                // Check the whitelist for any changes
+                const whitelist = await priceSubmitterContract.methods.voterWhitelistBitmap(cConfig.priceProviderAccount.address).call();
+
+                // Get whitelists and counts after getting whitelisted
+                const ftsoWhitelistsPost = await Promise.all(
+                    ftsoSupportedIndices.map(async idx => await voterWhitelister.methods.getFtsoWhitelistedPriceProviders(idx).call())
+                ) as string[];
+                const ftsoWhitelistsCountsPost = new Map( 
+                    symbols.map((c, i) => [c, ftsoWhitelistsPost[i].length])
+                );
+                console.log(`FTSO Whitelist counts (after whitelisting):`);
+                console.log(ftsoWhitelistsCountsPost);
+                // TODO(MCZ): set desired fee percentage
+                // https://songbird-explorer.flare.network/address/0xc5738334b972745067fFa666040fdeADc66Cb925/write-contract
+                // Use setDataProviderFeePercentage(bps)
+                // Then delegate to your FTSO provider address via 
+                // https://songbird-explorer.flare.network/address/0x02f0826ef6aD107Cfc861152B32B52fD11BaB9ED/write-contract
+            } else {
+                console.log(`Already whitelisted!`)
+            }
+
+            // Get submission config
+            // Assumes uniform across all FTSOs (was in original Flare code)
+            const {
+                0: firstEpochStartTimeBN,
+                1: submitPeriodBN,
+                2: revealPeriodBN,
+            } = (await ftsos[0].methods.getPriceEpochConfiguration().call());
+
+            [firstEpochStartTime, submitPeriod, revealPeriod] = 
+                [firstEpochStartTimeBN, submitPeriodBN, revealPeriodBN].map(x => parseInt(x));
+
+            console.log(`FTSO parameters:`);
+            console.log(`\tfirstEpochStartTime: ${new Date(firstEpochStartTime * 1000)}`);
+            console.log(`\tsubmitPeriod (secs): ${submitPeriod}`);
+            console.log(`\trevealPeriod (secs): ${revealPeriod}`);
+
+            const checkPrices = true;
+            if (checkPrices) {
+                // Test: get prices for symbols
+                var initialEpoch = Math.floor(((await getTime(cConfig.web3)) - firstEpochStartTime) / submitPeriod);
+                // var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
+                var pxsProd = await getPrices(initialEpoch, symbols, decimals, cConfig.priceSource);    
+                var pxsCcxt = await getPricesCCXT(symbols);
+                var pxsCC   = await getPricesCryptoCompare(symbols);
+                var pxsCApi = await getPricesCoinApi(symbols);
+                var pxsCMC  = await getPricesCMC(symbols);
+                var pxsCG   = await getPricesCoinGecko(symbols);
+                for (var i in ftsoSupportedIndices) {
+                    console.log(`${symbols[i]}:`);
+                    console.log(`\tCCXT:          ${pxsCcxt[i]}`);
+                    console.log(`\tCryptoCompare: ${pxsCC  [i]}`);
+                    console.log(`\tCoinAPI:       ${pxsCApi[i]}`);
+                    console.log(`\tCoinMarketCap: ${pxsCMC [i]}`);
+                    console.log(`\tCoinGecko:     ${pxsCG  [i]}`);
+                    console.log(`\tProduction Px: ${pxsProd[i]}`);
+                }
+                console.log(`Price Source: ${cConfig.priceSource}`)
+            }
+
+            // We submitPriceHashes with the current EpochID, 
+            // then once current Epoch is passed, within 90 seconds, we call revealPrices with EpochID 
+            // (the same Epoch as submitPriceHashes and it should be currentEpoch - 1)
+            // Since we only get rewarded if we're in the middle 50%, we need to make sure we submit at a good time
+            // Based on txs from providers (see list https://flaremetrics.io/ftso/providers), most submit within last 15 seconds of an epoch
+            // Reference functions in FtsoEpoch library:
+            //      _epochSubmitStartTime
+            //      _epochSubmitEndTime
+            //      _epochRevealEndTime;    
+            errorCount = 0;
+            // sleep until submitBuffer seconds before the end of the epoch to maximize chance of being in interquartile range
+            // Need a bit of buffer to let the other function calls return
+            // Should be based on when others submit their prices to make sure we're as close as possible to them
+            // submitBuffer = submitBufferBase + mean(submitTimes) + submitBufferStd*std(submitTimes)
+            submitBuffer = cConfig.submitBufferMin;              // Initial buffer for how many seconds before end of epoch we should start submission
+            // var submitBufferMin = 18;           // Minimum buffer
+            submitTimes= [];     // Record recent times to measure how much buffer we need
+            submitBufferStd = 3;            // How many stds (normal)
+            // var submitBufferDecay = 0.999;      // Decay factor on each loop
+            // var submitBufferIncrease = 1.1;     // Increase factor (multiple of std) for when we miss a submission window
+            submitBufferBase = 3;           // Base buffer rate.
+            submitBufferBurnIn = 5;        // Number of periods before adjusting submitBuffer
+            now = await getTime(cConfig.web3);
+            currentEpoch = 0;
+            nextEpoch = currentEpoch;
+            diff = 0;
+            shouldInitialize = false;
+        }
         // Get time and current epoch params
         now = await getTime(cConfig.web3);
         // now = (new Date()).getTime() / 1000; // susceptible to system clock drift
@@ -895,7 +1006,7 @@ async function main() {
         console.log(`\tFinished getting prices: ${Date()}`); 
 
         const hashes = prices.map((p, i) => 
-            submitPriceHash(p, randoms[i], priceProviderAccount.address, cConfig.web3)
+            submitPriceHash(p, randoms[i], cConfig.priceProviderAccount.address, cConfig.web3)
         );
         console.log(`\tFinished getting hashes: ${Date()}`); 
         console.log("Prices:  ", prices);
@@ -907,7 +1018,7 @@ async function main() {
         try {
 
             // const exchangeEncodeABI = priceSubmitterContract.methods.submitPriceHashes(currentEpoch,ftsoIndices, hashes).encodeABI();
-            // var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
+            // var transactionNonce = await web3.eth.getTransactionCount(cConfig.priceProviderAccount.address);
             // var gasPrice = await web3.eth.getGasPrice();
             // const transactionObject = {
             //     chainId: 19,                                    // TODO: parameterize
@@ -916,7 +1027,7 @@ async function main() {
             //     gasPrice: web3.utils.toHex(gasPrice*1.2),
             //     value: 0,
             //     to: priceSubmitterAddr,
-            //     from: priceProviderAccount.address,
+            //     from: cConfig.priceProviderAccount.address,
             //     data: exchangeEncodeABI
             // };
             // const result : any[] = [];
@@ -958,11 +1069,11 @@ async function main() {
             
             // await Promise.all(result);
 
-            console.log(`Submitting Price Hashes from: ${priceProviderAccount.address}`)
+            console.log(`Submitting Price Hashes from: ${cConfig.priceProviderAccount.address}`)
             var gasPrice = await cConfig.web3.eth.getGasPrice();
             var submission = await priceSubmitterContract.methods.submitPriceHashes(currentEpoch, ftsoIndices, hashes).send(
                 {
-                    from: priceProviderAccount.address,
+                    from: cConfig.priceProviderAccount.address,
                     gas: cConfig.web3.utils.toHex(469532),
                     gasPrice: cConfig.web3.utils.toHex(gasPrice*1.2),
                 }
@@ -999,9 +1110,9 @@ async function main() {
                 let info = await cConfig.transporter.sendMail({
                     from: `"FTSO Monitor" <${cConfig.gmail_user}@gmail.com>`,                      // sender address
                     to: `${cConfig.error_mail_list}`,                                              // list of receivers
-                    subject: `FTSO error for ${priceProviderAccount.address}`,                         // Subject line
-                    text: `Price hash submission error for ${priceProviderAccount.address}`,        // plain text body
-                    html: `Price hash submission error for <b>${priceProviderAccount.address}</b>`, // html body
+                    subject: `FTSO error for ${cConfig.priceProviderAccount.address}`,                         // Subject line
+                    text: `Price hash submission error for ${cConfig.priceProviderAccount.address}`,        // plain text body
+                    html: `Price hash submission error for <b>${cConfig.priceProviderAccount.address}</b>`, // html body
                 });
             }
             catch (error)
@@ -1053,8 +1164,8 @@ async function main() {
             try {
                 
                 // const exchangeEncodeABI = priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).encodeABI();
-                // var gasLimit = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: priceProviderAccount.address});
-                // var transactionNonce = await web3.eth.getTransactionCount(priceProviderAccount.address);
+                // var gasLimit = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: cConfig.priceProviderAccount.address});
+                // var transactionNonce = await web3.eth.getTransactionCount(cConfig.priceProviderAccount.address);
                 // var gasPrice = await web3.eth.getGasPrice();
                 // const transactionObject = {
                 //     chainId: 19,
@@ -1063,7 +1174,7 @@ async function main() {
                 //     gasPrice: web3.utils.toHex(gasPrice),
                 //     value: 0,
                 //     to: priceSubmitterAddr,
-                //     from: priceProviderAccount.address,
+                //     from: cConfig.priceProviderAccount.address,
                 //     data: exchangeEncodeABI
                 // };
                 // const result : any[] = [];
@@ -1090,12 +1201,12 @@ async function main() {
                 // await Promise.all(result)
 
 
-                console.log(`Revealing Prices from: ${priceProviderAccount.address}`)
+                console.log(`Revealing Prices from: ${cConfig.priceProviderAccount.address}`)
                 var gasPrice = await cConfig.web3.eth.getGasPrice();
-                var gasLimit = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: priceProviderAccount.address});
+                var gasLimit = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).estimateGas({from: cConfig.priceProviderAccount.address});
                 var submission = await priceSubmitterContract.methods.revealPrices(currentEpoch, ftsoIndices, prices, randoms).send(
                     {
-                        from: priceProviderAccount.address,
+                        from: cConfig.priceProviderAccount.address,
                         gas: gasLimit,
                         gasPrice: cConfig.web3.utils.toHex(gasPrice*1.2),
                     }
@@ -1112,9 +1223,9 @@ async function main() {
                     let info = await cConfig.transporter.sendMail({
                         from: `"FTSO Monitor" <${cConfig.gmail_user}@gmail.com>`,                      // sender address
                         to: `${cConfig.error_mail_list}`,                                              // list of receivers
-                        subject: `FTSO error for ${priceProviderAccount.address}`,                         // Subject line
-                        text: `Price reveal submission error for ${priceProviderAccount.address}`,         // plain text body
-                        html: `Price reveal submission error for <b>${priceProviderAccount.address}</b>`,  // html body
+                        subject: `FTSO error for ${cConfig.priceProviderAccount.address}`,                         // Subject line
+                        text: `Price reveal submission error for ${cConfig.priceProviderAccount.address}`,         // plain text body
+                        html: `Price reveal submission error for <b>${cConfig.priceProviderAccount.address}</b>`,  // html body
                     });
                 }
                 catch (error)
@@ -1131,7 +1242,7 @@ async function main() {
         nextEpoch = nextEpoch + 1
 
         // get remaining balance
-        sgbBalance = fromWei((await cConfig.web3.eth.getBalance(priceProviderAccount.address)).toString());
+        sgbBalance = fromWei((await cConfig.web3.eth.getBalance(cConfig.priceProviderAccount.address)).toString());
         console.log(`SGB remaining: ${sgbBalance}`);
         console.log(`Total errors now ${errorCount}`);
     }
