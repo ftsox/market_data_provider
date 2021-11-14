@@ -62,7 +62,7 @@ class ftsoConfig {
     public ftsoConfig() {}
     
 };
- 
+let mailErrCount = 0;
 let cConfig  = new ftsoConfig();
 let nConfig = new ftsoConfig();
 let shouldInitialize: boolean;
@@ -907,7 +907,7 @@ async function main() {
     printConfig(nConfig);
 
 
-    var errorCount, submitBuffer, submitTimes, submitBufferStd, submitBufferBase, submitBufferBurnIn, now, currentEpoch, nextEpoch, diff;
+    var errorCount, submitBuffer, submitTimes, submitBufferStd, submitBufferBase, submitBufferBurnIn, now, currentEpoch, nextEpoch, diff, previousErrTime = new Date(), curErrTime;
     var decimals;
     var symbols: string[];
     var firstEpochStartTime, submitPeriod, revealPeriod;
@@ -1221,6 +1221,16 @@ async function main() {
             console.log(`\tError submitting price hashes:     ${Date()}`); 
             console.log(error);
             errorCount += 1;
+            curErrTime  = new Date();
+            if((curErrTime.getTime() - previousErrTime.getTime()) / 1000 < 200)
+            {
+                mailErrCount++;
+            }
+            else
+            {
+                mailErrCount=0;
+            }
+            previousErrTime = curErrTime;
             // if this is due to late submission, then we need to increase our buffer
             // TODO(MCZ): change to analyzing the timestamp of the failed transaction - not easy to do with Hardhat errors
             // Sometimes this will be submitted in time but not confirmed in time, in which case we get a tx id
@@ -1240,13 +1250,15 @@ async function main() {
 
             // Send error message
             // send mail with defined transport object
+            if( mailErrCount > 7 || errorCount> 7)
+            {
             try {
                 let info = await cConfig.transporter.sendMail({
                     from: `"FTSO Monitor" <${cConfig.gmail_user}@gmail.com>`,                      // sender address
                     to: `${cConfig.error_mail_list}`,                                              // list of receivers
                     subject: `FTSO error for ${cConfig.priceProviderAccount.address}`,                         // Subject line
-                    text: `Price hash submission error for ${cConfig.priceProviderAccount.address}`,        // plain text body
-                    html: `Price hash submission error for <b>${cConfig.priceProviderAccount.address}</b>`, // html body
+                    text: `Instability Detected`,        // plain text body
+                    html: `Please check the FTSO provider`, // html body
                 });
             }
             catch (error)
@@ -1254,6 +1266,8 @@ async function main() {
                 console.log(`\tError Sending mail:     ${Date()}`);
                 console.log(error);
             }
+            errorCount = 0;
+        }
         }
         var endSubmitTime: Date = new Date();
         var submitTime = (endSubmitTime.getTime() - startSubmitTime.getTime()) / 1000;   // in seconds
