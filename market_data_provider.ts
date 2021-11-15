@@ -27,6 +27,7 @@ let exchangeSource = process.env.EXCHANGE_SOURCE || '';
 let exchanges = exchangeSource.replace(/\s/g,'').split(',');
 var firstEpochStartTime, submitPeriod, revealPeriod;  
 let baseCurrency = process.env.BASE_CURRENCY || 'USD';
+let period = parseInt(process.env.PERIOD || '3000');
 let baseCurrencyAltsRaw = process.env.BASE_CURRENCY_ALTS || '';   // enable multiple alternative bases
 var baseCurrencyAlts = []
 let exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
@@ -132,7 +133,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
     try {
       
         let curTime = (new Date()).getTime();
-        let nxtTime = curTime + 3000;
+        let nxtTime = curTime + period;
         let bulkPxPromises: any[] = [];
         let singlePxPromises: any[] = [];
 
