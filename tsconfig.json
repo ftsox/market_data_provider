@@ -1,24 +1,24 @@
 {
+    "extends": "@tsconfig/node14/tsconfig.json",
     "compilerOptions": {
       "target": "es2018",
       "module": "commonjs",
       "strict": true,
       "esModuleInterop": true,
+      "allowSyntheticDefaultImports": true,
+      "moduleResolution": "node",
+      "resolveJsonModule": true,
+      "sourceMap": true,
       "noImplicitAny": false,
-      "outDir": "dist",
+      "outDir": "dist/",
+      "noImplicitReturns": false,
+      "strictNullChecks":false,
       "typeRoots": [
         "test/types",
         "node_modules/@types"
       ]
     },
-    "include": [
-      "./scripts", 
-      "./test", 
-      "./typechain", 
-      "./typechain-truffle", 
-      "./deployment/scripts", 
-      "deployment/test/deploy.ts", 
-    ],
-    "files": ["./hardhat.config.ts"]
+    "include": ["./*"],
+    "exclude": ["**/*.test.ts"]
   }
   
