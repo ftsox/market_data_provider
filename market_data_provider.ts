@@ -286,19 +286,25 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
         Exchangetable.insert(quotesFlat, insertHandler)
         //console.log(quotesFlat);
         timeToSleep = 0;
-        if(timeToEpochEnd>nxtWakeUp)
+        if(timeToEpochEnd>120)
         {
-            timeToSleep = timeToEpochEnd-nxtWakeUp;
-            idx = (idx + 1) % wakeUpTime.length;
-            nxtWakeUp = wakeUpTime[idx];
-            if(idx==0)
-            {
-                nxtWakeUp = timeToEpochEnd;
-            }
+            timeToSleep = 30000;
         }
-        console.log("next wake up time: ", wakeUpTime[idx], "sleeping for: " ,timeToSleep, "seconds")
+        else if (timeToEpochEnd > 60)
+        {
+            timeToSleep = 20000;
+        }
+        else if (timeToEpochEnd > 10)
+        {
+            timeToSleep = 10000;
+        }
+        else
+        {
+            timeToSleep = 3000;
+        }
+        console.log("timeToEpochEnd: ", timeToEpochEnd, "sleeping for: " ,timeToSleep/1000, "seconds")
         
-        await sleep(timeToSleep*1000);
+        await sleep(timeToSleep);
     }
     catch(error){
         console.log(`CCXT API error:\n  ${error}`);
