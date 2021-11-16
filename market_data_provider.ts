@@ -18,7 +18,6 @@ const bigquery = new BigQuery();
 const dataset = bigquery.dataset('FTSO');
 const Exchangetable = dataset.table('ExchangeData');
 var orig = console.log
-
 console.log = function log() {
     orig.apply(console, [`${process.pid} `, ...arguments])
 }
@@ -27,11 +26,16 @@ let exchangeSource = process.env.EXCHANGE_SOURCE || '';
 let exchanges = exchangeSource.replace(/\s/g,'').split(',');
 var firstEpochStartTime, submitPeriod, revealPeriod;  
 let baseCurrency = process.env.BASE_CURRENCY || 'USD';
-let period = parseInt(process.env.PERIOD || '3000');
 let baseCurrencyAltsRaw = process.env.BASE_CURRENCY_ALTS || '';   // enable multiple alternative bases
 var baseCurrencyAlts = []
-let exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
-var exchangesMarkets = (async () => { await Promise.all(exchangesObjs.map((ex) => ex.load_markets())) }) ()
+let wakeUpTime = [180,
+                120,
+                60,
+                30,
+                24,
+                18,
+                12,
+                6]
 let URL0 = process.env.RPC_NODE_URL0;
 const web3ProviderOptions = {
     // Need a lower timeout than the default of 750 seconds in case it hangs
@@ -93,6 +97,9 @@ function insertHandler(err, apiResponse) {
         console.log(JSON.stringify(err));
     }
   }
+  var timeToSleep, idx = 0;
+  let firstTime = true;
+  var nxtWakeUp = 0;
 async function getPricesCCXT(epochId: number, assets: string[]) {
 
     if(exchanges.length == 0)
@@ -128,12 +135,18 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
     let pxsEx = {};     // arrays of prices for each ticker
     let volsEx = {};    // arrays of volumes for each ticker (in base pair numeraire)
     // let formattedSingleRawData = {};
+    let exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
+    for(let i = 0; i < exchangesObjs.length; i++)
+    {
+        await exchangesObjs[i].load_markets()
+    }
+  
     while(true)
     {
     try {
       
         let curTime = (new Date()).getTime();
-        let nxtTime = curTime + period;
+        let nxtTime = curTime;
         let bulkPxPromises: any[] = [];
         let singlePxPromises: any[] = [];
 
@@ -272,9 +285,20 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
 
         Exchangetable.insert(quotesFlat, insertHandler)
         //console.log(quotesFlat);
-        var timeToSleep =  nxtTime - (new Date()).getTime()
-        console.log("sleeping for: " ,timeToSleep)
-        await sleep(timeToSleep);
+        timeToSleep = 0;
+        if(timeToEpochEnd>nxtWakeUp)
+        {
+            timeToSleep = timeToEpochEnd-nxtWakeUp;
+            idx = (idx + 1) % wakeUpTime.length;
+            nxtWakeUp = wakeUpTime[idx];
+            if(idx==0)
+            {
+                nxtWakeUp = timeToEpochEnd;
+            }
+        }
+        console.log("next wake up time: ", wakeUpTime[idx], "sleeping for: " ,timeToSleep, "seconds")
+        
+        await sleep(timeToSleep*1000);
     }
     catch(error){
         console.log(`CCXT API error:\n  ${error}`);
