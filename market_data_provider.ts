@@ -339,7 +339,7 @@ async function main() {
       })
       
 
-    const port = process.env.PORT || 8081;
+    const port = process.env.PORT || 8080;
     app.listen(port, () => {
         console.log('Market Data Provider Listening on', port);
     });
