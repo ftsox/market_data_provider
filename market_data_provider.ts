@@ -140,13 +140,55 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
     {
         await exchangesObjs[i].load_markets()
     }
+
+    var timeToEpochEndList = [60, 45, 30, 25, 20, 15, 10, 5, 0];
+    let workingEpoch = 0;
+    let missCount = 0;
+    let gracePeriod = 5;
   
-    while(true)
-    {
+    while(true) {
+    // Get epoch info for current loop
+    let loopStart = (new Date()).getTime() / 1000;
+    let loopEpoch = (Math.floor((loopStart - firstEpochStartTime) / submitPeriod));
+    let loopEpochEnd = loopEpoch * submitPeriod + firstEpochStartTime;
+    console.log(`\nEpoch ${loopEpoch}`);
+    console.log(`\tCumulative miss count: ${missCount}`);
+    let currentEpoch = loopEpoch;
+    let nextEpoch = currentEpoch + 1;
+    let nextEpochEnd = nextEpoch * submitPeriod + firstEpochStartTime;
+
+    // Loop over desired time snapshots
+    for (var timeToEpochEnd of timeToEpochEndList) {
     try {
-      
-        let curTime = (new Date()).getTime();
-        let nxtTime = curTime;
+        // get current times
+        let now = (new Date()).getTime() / 1000;
+        // let currentEpoch = (Math.floor((now - firstEpochStartTime) / submitPeriod));
+        // if (currentEpoch > workingEpoch) {
+        //     workingEpoch = currentEpoch;
+        // }
+        // let nextEpoch = currentEpoch + 1
+        let startTimeToEpochEnd = nextEpochEnd - now;
+        // Find next timeToEpochEnd we want to snapshot
+        // let nextTimeToEpochEnd = timeToEpochEndList.find(el => el < startTimeToEpochEnd);
+        let nextTimeToEpochEnd = timeToEpochEnd;
+        let waitTime = Math.max(startTimeToEpochEnd - nextTimeToEpochEnd, 0);  // don't wait negative time
+
+        // Log current times
+        console.log(`\tCurrently time to epoch end: ${startTimeToEpochEnd}`);
+        console.log(`\tNext price snapshot from epoch end: ${nextTimeToEpochEnd}`);
+        console.log(`\tWaiting for ${waitTime} seconds before getting price`);
+        
+        // Check if we've missed the window for this timeToEpochEnd
+        // Give a grace period to try to recover
+        if (startTimeToEpochEnd < nextTimeToEpochEnd - gracePeriod) {
+            console.log(`\tMissed this timeToEpochEnd`);
+            missCount += 1;
+            continue;
+        }
+
+        await sleep(waitTime * 1000);
+        // let timeToEpochEnd = nextTimeToEpochEnd;
+
         let bulkPxPromises: any[] = [];
         let singlePxPromises: any[] = [];
 
@@ -213,7 +255,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
 
         let baseAltPxsMap = new Map(baseCurrencyAlts.map((alt, idx) => [alt, baseAltsPxs[idx]]));
         baseAltPxsMap.set(baseCurrency, 1);
-         // Get to volume weighted price for each asset
+        // Get to volume weighted price for each asset
         // TODO: alternative 1: can change to matrix version using math.js and (tickersBase.map((ticker) => pxsEx.get(ticker)))
         // TODO: add an exchange-level weighting factor, s.t. weight = volume * exchange_factor, to reflect exchange quality of volume
         // let pxsAll = {}
@@ -245,25 +287,25 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
         });
 
 
-        // Get time and current epoch params
-        let now = await getTime(web3);
-        // now = (new Date()).getTime() / 1000; // susceptible to system clock drift
-        const currentEpochCheck = (Math.floor((now - firstEpochStartTime) / submitPeriod)); // don't add 1 here like above
-        var nextEpoch;
-        // check for drift
-        if (epochId < currentEpochCheck) {
-            epochId = currentEpochCheck;
+        // // Get time and current epoch params
+        // let now = await getTime(web3);
+        // // now = (new Date()).getTime() / 1000; // susceptible to system clock drift
+        // const currentEpochCheck = (Math.floor((now - firstEpochStartTime) / submitPeriod)); // don't add 1 here like above
+        // var nextEpoch;
+        // // check for drift
+        // if (epochId < currentEpochCheck) {
+        //     epochId = currentEpochCheck;
             
-        }
-        nextEpoch = epochId + 1;
-        let next = nextEpoch * submitPeriod + firstEpochStartTime;
-        const timeToEpochEnd = Math.max(Math.floor(next - now), 0);  // don't wait negative time
+        // }
+        // nextEpoch = epochId + 1;
+        // let next = nextEpoch * submitPeriod + firstEpochStartTime;
+        // const timeToEpochEnd = Math.max(Math.floor(next - now), 0);  // don't wait negative time
 
         var combinedExs = bulkTickerExs.concat(singleTickerExs)
         let quotesFlat = allRawData.map((exRets, i) => {
             return Object.entries(exRets).map(([ticker, quote], j) => {
                 return {
-                    epochID: epochId,
+                    epochID: loopEpoch,
                     asset: quote['symbol'].split('/')[0],
                     exchange: combinedExs[i].id,
                     timeToEpochEnd: timeToEpochEnd,
@@ -283,31 +325,36 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
             });
         }).reduce((partial_list, a) => [...partial_list, ...a], []);
 
-        Exchangetable.insert(quotesFlat, insertHandler)
+        // Exchangetable.insert(quotesFlat, insertHandler)
+        console.log(`\tGot ${quotesFlat.length} quotes\n`)
         //console.log(quotesFlat);
-        timeToSleep = 0;
-        if(timeToEpochEnd>120)
-        {
-            timeToSleep = 30000;
-        }
-        else if (timeToEpochEnd > 60)
-        {
-            timeToSleep = 20000;
-        }
-        else if (timeToEpochEnd > 10)
-        {
-            timeToSleep = 10000;
-        }
-        else
-        {
-            timeToSleep = 3000;
-        }
-        console.log("timeToEpochEnd: ", timeToEpochEnd, "sleeping for: " ,timeToSleep/1000, "seconds")
         
-        await sleep(timeToSleep);
+        
+        // timeToSleep = 0;
+        // if(timeToEpochEnd>120)
+        // {
+        //     timeToSleep = 30000;
+        // }
+        // else if (timeToEpochEnd > 60)
+        // {
+        //     timeToSleep = 20000;
+        // }
+        // else if (timeToEpochEnd > 10)
+        // {
+        //     timeToSleep = 10000;
+        // }
+        // else
+        // {
+        //     timeToSleep = 3000;
+        // }
+        // console.log("timeToEpochEnd: ", timeToEpochEnd, "sleeping for: " ,timeToSleep/1000, "seconds")
+        
+        // await sleep(timeToSleep);
     }
+
     catch(error){
         console.log(`CCXT API error:\n  ${error}`);
+    }
     }
     }
     

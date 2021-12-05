@@ -11,3 +11,4 @@ src_prod/dist
 plot
 test-state.json
 bbftso-329118-310b32bfb46e.json
+dist

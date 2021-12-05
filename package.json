@@ -14,7 +14,7 @@
     "build:typescript": "tsc -d",
     "watch:typescript": "tsc -w",
     "lint": "eslint -c .eslintrc.js --ext .ts src",
-    "runFromBuild": "yarn build && node ./dist/market-data-provider.js"
+    "runFromBuild": "yarn build && node ./dist/market_data_provider.js"
   },
   "license": "MIT",
   "dependencies": {
