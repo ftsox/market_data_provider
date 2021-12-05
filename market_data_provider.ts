@@ -324,9 +324,8 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                 };
             });
         }).reduce((partial_list, a) => [...partial_list, ...a], []);
-
-        // Exchangetable.insert(quotesFlat, insertHandler)
         console.log(`\tGot ${quotesFlat.length} quotes\n`)
+        Exchangetable.insert(quotesFlat, insertHandler)
         //console.log(quotesFlat);
         
         
