@@ -353,6 +353,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
 
     catch(error){
         console.log(`CCXT API error:\n  ${error}`);
+        process.exit(1);
     }
     }
     }
