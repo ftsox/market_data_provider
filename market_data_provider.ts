@@ -41,9 +41,9 @@ const web3ProviderOptions = {
     // Need a lower timeout than the default of 750 seconds in case it hangs
     timeout: 60 * 1000, // milliseconds,
 };
-let web3 = new Web3(
-    new Web3.providers.HttpProvider(URL0, web3ProviderOptions)
-);
+// let web3 = new Web3(
+//     new Web3.providers.HttpProvider(URL0, web3ProviderOptions)
+// );
 
 if (baseCurrencyAltsRaw.length == 0) {
     baseCurrencyAlts = []; 
@@ -53,16 +53,20 @@ if (baseCurrencyAltsRaw.length == 0) {
 let priceSubmitterAddr = '0x1000000000000000000000000000000000000003';
 let mailErrCount = 0;
 let shouldInitialize: boolean;
-async function getTime(web3: any): Promise<number>{
-    if (useSystemTime) {
-        return (new Date()).getTime() / 1000;
-    } else {
-        const blockNum = await web3.eth.getBlockNumber();
-        const block = await web3.eth.getBlock(blockNum);
-        const timestamp = block.timestamp;
-        return timestamp as number;
-    }
+// async function getTime(web3: any): Promise<number>{
+//     if (useSystemTime) {
+//         return (new Date()).getTime() / 1000;
+//     } else {
+//         const blockNum = await web3.eth.getBlockNumber();
+//         const block = await web3.eth.getBlock(blockNum);
+//         const timestamp = block.timestamp;
+//         return timestamp as number;
+//     }
+// }
+async function getTime(): Promise<number>{
+    return (new Date()).getTime() / 1000;
 }
+
 
 var pricesLast = {};    // Dictionary of arrays indexed by assets (in case we are ever calling for different sets of assets)
 // TODO: have this and child functions return a validPrice flag (boolean)
@@ -325,7 +329,9 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
             });
         }).reduce((partial_list, a) => [...partial_list, ...a], []);
         console.log(`\tGot ${quotesFlat.length} quotes\n`)
+
         Exchangetable.insert(quotesFlat, insertHandler)
+
         //console.log(quotesFlat);
         
         
@@ -402,61 +408,69 @@ async function main() {
     console.log(`\n\n\Initializing Market Data provider on mainnet`);
     console.log(`\tStart time: ${Date()}`); 
     console.log(`Time check:`);
-    console.log(`\tChain time:  ${await getTime(web3)}`);
+    // console.log(`\tChain time:  ${await getTime(web3)}`);
+    console.log(`\tChain time:  ${await getTime()}`);
     console.log(`\tSystem time: ${(new Date()).getTime() / 1000}`);
 
-    priceSubmitterAbi = require("./priceSubmitter.json");
-    MockFtsoRegistry = require("./MockFtsoRegistry.json");
-    MockVoterWhitelister = require("./MockVoterWhitelister.json");
-    MockFtso = require("./MockNpmFtso.json")
-    priceSubmitterContract = new web3.eth.Contract(JSON.parse(JSON.stringify(priceSubmitterAbi)), priceSubmitterAddr);
-    ftsoRegistry = new web3.eth.Contract(JSON.parse(JSON.stringify(MockFtsoRegistry)), await priceSubmitterContract.methods.getFtsoRegistry().call());
-    voterWhitelister = new web3.eth.Contract(JSON.parse(JSON.stringify(MockVoterWhitelister)), await priceSubmitterContract.methods.getVoterWhitelister().call());  
+
+    // Hardcode params
+    // TODO: change to pulling from DB
+    firstEpochStartTime = 1631824801;
+    submitPeriod = 180;
+    revealPeriod = 90;
+    decimals = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
+    symbols = ['XRP', 'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH', 'DGB', 'BTC', 'ETH', 'FIL'];
+
+
+    // priceSubmitterAbi = require("./priceSubmitter.json");
+    // MockFtsoRegistry = require("./MockFtsoRegistry.json");
+    // MockFtso = require("./MockNpmFtso.json")
+    // priceSubmitterContract = new web3.eth.Contract(JSON.parse(JSON.stringify(priceSubmitterAbi)), priceSubmitterAddr);
+    // ftsoRegistry = new web3.eth.Contract(JSON.parse(JSON.stringify(MockFtsoRegistry)), await priceSubmitterContract.methods.getFtsoRegistry().call());
 
     // Get indices for specific symbols
     // const symbols = ['XRP',  'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH',  'DGB', 'BTC', 'ETH',  'FIL'];
     // Note: this can be replaced by a single call based on live contract
 
-    const ftsoSupportedIndices_ = await ftsoRegistry.methods.getSupportedIndices().call();
-    const ftsoSupportedIndices = ftsoSupportedIndices_.map(idx => (parseInt(idx)));
-    symbols = await Promise.all(
-        ftsoSupportedIndices.map(async idx => await ftsoRegistry.methods.getFtsoSymbol(idx).call())
-    );
+    // const ftsoSupportedIndices_ = await ftsoRegistry.methods.getSupportedIndices().call();
+    // const ftsoSupportedIndices = ftsoSupportedIndices_.map(idx => (parseInt(idx)));
+    // symbols = await Promise.all(
+    //     ftsoSupportedIndices.map(async idx => await ftsoRegistry.methods.getFtsoSymbol(idx).call())
+    // );
 
-    const ftsos = await Promise.all(
-        symbols.map(async sym =>  new web3.eth.Contract(JSON.parse(JSON.stringify(MockFtso)), await ftsoRegistry.methods.getFtsoBySymbol(sym).call()))
-    );
+    // const ftsos = await Promise.all(
+    //     symbols.map(async sym =>  new web3.eth.Contract(JSON.parse(JSON.stringify(MockFtso)), await ftsoRegistry.methods.getFtsoBySymbol(sym).call()))
+    // );
 
-    // Get addresses of the various FTSO contracts
-    decimals = await Promise.all(
-        ftsos.map(async ftso => parseInt((await ftso.methods.ASSET_PRICE_USD_DECIMALS().call())))
-    );
+    // // Get addresses of the various FTSO contracts
+    // decimals = await Promise.all(
+    //     ftsos.map(async ftso => parseInt((await ftso.methods.ASSET_PRICE_USD_DECIMALS().call())))
+    // );
 
-    // Get indices on which to submit
-    // const ftsoIndices = await Promise.all(
-    //     symbols.map(async sym => (await ftsoRegistry.getFtsoIndex(sym)).toNumber())
-    // )
-    ftsoIndices = ftsoSupportedIndices;
+    // // Get indices on which to submit
+    // // const ftsoIndices = await Promise.all(
+    // //     symbols.map(async sym => (await ftsoRegistry.getFtsoIndex(sym)).toNumber())
+    // // )
+    // ftsoIndices = ftsoSupportedIndices;
 
-    // Combine them for easier future use
-    const currencyIndices = new Map(
-        symbols.map((c, i) => [c, ftsoIndices[i]]) 
-    );
+    // // Combine them for easier future use
+    // const currencyIndices = new Map(
+    //     symbols.map((c, i) => [c, ftsoIndices[i]]) 
+    // );
 
     // Get submission config
     // Assumes uniform across all FTSOs (was in original Flare code)
-    const {
-        0: firstEpochStartTimeBN,
-        1: submitPeriodBN,
-        2: revealPeriodBN,
-    } = (await ftsos[0].methods.getPriceEpochConfiguration().call());
-
-    [firstEpochStartTime, submitPeriod, revealPeriod] = 
-        [firstEpochStartTimeBN, submitPeriodBN, revealPeriodBN].map(x => parseInt(x));
-
+    // const {
+    //     0: firstEpochStartTimeBN,
+    //     1: submitPeriodBN,
+    //     2: revealPeriodBN,
+    // } = (await ftsos[0].methods.getPriceEpochConfiguration().call());
+    // [firstEpochStartTime, submitPeriod, revealPeriod] = 
+    //     [firstEpochStartTimeBN, submitPeriodBN, revealPeriodBN].map(x => parseInt(x));
 
     // Test: get prices for symbols
-    var initialEpoch = Math.floor(((await getTime(web3)) - firstEpochStartTime) / submitPeriod);
+    // var initialEpoch = Math.floor(((await getTime(web3)) - firstEpochStartTime) / submitPeriod);
+    var initialEpoch = Math.floor(((await getTime()) - firstEpochStartTime) / submitPeriod);
     // var pxsProd = await getPrices(1, symbols, new Array(symbols.length).fill(5));
     await getPrices(initialEpoch, symbols, decimals);    
 
