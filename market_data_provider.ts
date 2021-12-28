@@ -3,17 +3,17 @@ require('dotenv').config();
 let sleep = require('util').promisify(setTimeout);
 const axios = require('axios');
 const { ethers } = require("ethers");
-var Web3 = require('web3');
-const { fromWei } = Web3.utils;
-const EthTx = require("ethereumjs-tx");
+// var Web3 = require('web3');
+// const { fromWei } = Web3.utils;
+// const EthTx = require("ethereumjs-tx");
 const math = require("mathjs");
 const nodemailer = require("nodemailer");
 var url = require('url');
 const {BigQuery} = require('@google-cloud/bigquery');
-// @ts-ignore
-import { time } from '@openzeppelin/test-helpers';  // TODO: get rid of this
-import { table } from 'console';
-import { exit } from 'process';
+// // @ts-ignore
+// import { time } from '@openzeppelin/test-helpers';  // TODO: get rid of this
+// import { table } from 'console';
+// import { exit } from 'process';
 const bigquery = new BigQuery();
 const dataset = bigquery.dataset('FTSO');
 const Exchangetable = dataset.table('ExchangeData');
@@ -28,19 +28,19 @@ var firstEpochStartTime, submitPeriod, revealPeriod;
 let baseCurrency = process.env.BASE_CURRENCY || 'USD';
 let baseCurrencyAltsRaw = process.env.BASE_CURRENCY_ALTS || '';   // enable multiple alternative bases
 var baseCurrencyAlts = []
-let wakeUpTime = [180,
-                120,
-                60,
-                30,
-                24,
-                18,
-                12,
-                6]
-let URL0 = process.env.RPC_NODE_URL0;
-const web3ProviderOptions = {
-    // Need a lower timeout than the default of 750 seconds in case it hangs
-    timeout: 60 * 1000, // milliseconds,
-};
+// let wakeUpTime = [180,
+//                 120,
+//                 60,
+//                 30,
+//                 24,
+//                 18,
+//                 12,
+//                 6]
+// let URL0 = process.env.RPC_NODE_URL0;
+// const web3ProviderOptions = {
+//     // Need a lower timeout than the default of 750 seconds in case it hangs
+//     timeout: 60 * 1000, // milliseconds,
+// };
 // let web3 = new Web3(
 //     new Web3.providers.HttpProvider(URL0, web3ProviderOptions)
 // );
