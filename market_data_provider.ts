@@ -105,9 +105,8 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
     let volsEx = {};    // arrays of volumes for each ticker (in base pair numeraire)
     // let formattedSingleRawData = {};
     let exchangesObjs = exchanges.map((ex) => new ccxt[ex]({}));
-    for(let i = 0; i < exchangesObjs.length; i++)
-    {
-        await exchangesObjs[i].load_markets()
+    for (let i = 0; i < exchangesObjs.length; i++) {
+        await exchangesObjs[i].load_markets();
     }
 
     var timeToEpochEndList = [60, 45, 30, 25, 20, 15, 10, 5, 0];
@@ -115,7 +114,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
     let missCount = 0;
     let gracePeriod = 5;
   
-    while(true) {
+    while (true) {
         // Get epoch info for current loop
         let loopStart = (new Date()).getTime() / 1000;
         let loopEpoch = (Math.floor((loopStart - firstEpochStartTime) / submitPeriod));
@@ -154,29 +153,40 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                 let singlePxPromises: any[] = [];
 
                 // Bulk fetch exchanges
-                let bulkFetchIdxs = exchangesObjs.map((ex, idx) => ex.has[`fetchTickers`] || false);
+                // special logic for Bithumb
+                let bulkFetchIdxs = exchangesObjs.map((ex, idx) => (ex.has[`fetchTickers`] || false) && ex.id != 'bithumb');
                 let bulkTickerExs = exchangesObjs.filter((ex, i) => bulkFetchIdxs[i])
-                bulkPxPromises = bulkTickerExs.map((ex, idx) => ex.fetchTickers(tickersFull));
+                // Create promise for each of the bulk fetch exchanges, restricting to tickers each supports (required for Kraken)
+                bulkPxPromises = bulkTickerExs.map(
+                    (ex, idx) => ex.fetchTickers(tickersFull.filter((ticker, idx) => ex.symbols.includes(ticker)))
+                );
                 
                 // individual ticker exchanges
-                // Only do for Coinbase
-                // TODO: add more single ticker exchanges, like Kraken
-                // let usdTickers = tickersFull.filter((ticker, idx) => ticker.split('/')[1] == 'USD')
-                let singleTickerExs = exchangesObjs.filter((ex, i) => !bulkFetchIdxs[i] && ex.id == 'coinbasepro')
+                // let singleTickerExsSupported = ['coinbasepro', 'bithumb'];
+                // Bithumb prices are wacky - they appear to be quoting in Kor Won but showing tickers as traded vs BTC
+                // only support Coinbase for now
+                let singleTickerExsSupported = ['coinbasepro'];
+                let singleTickerExs = exchangesObjs.filter((ex, i) => !bulkFetchIdxs[i] && singleTickerExsSupported.includes(ex.id))
                 for (let singleTickerEx of singleTickerExs) {
+                    let singleTickerExSupportedTickers = [];
                     if (singleTickerEx.id == 'coinbasepro') {
-                        // need to filter out XRP/USD from Coinbase
-                        let singleTickerExSupportedTickers = tickersFull.filter(
-                            (ticker, idx) => singleTickerEx.symbols.includes(ticker) && ticker != 'XRP/USD'
+                        // need to filter out 'XRP' pairs
+                        singleTickerExSupportedTickers = tickersFull.filter((ticker, idx) => 
+                            ticker.slice(0,3) != 'XRP' && singleTickerEx.symbols.includes(ticker)
                         )
-                        // TODO: this may cause too many request issues, may need to loop individually over each ticker as we did previously
-                        // push rather than concat to have parallel structure as bulkPxPromises of a separate array for each exchange
-                        singlePxPromises.push(singleTickerExSupportedTickers.map((ticker, idx) => singleTickerEx.fetchTicker(ticker)))
+                    } else {
+                        // need to filter out 'XRP' pairs
+                        singleTickerExSupportedTickers = tickersFull.filter((ticker, idx) => 
+                            singleTickerEx.symbols.includes(ticker)
+                        )
                     }
+                    // TODO: this may cause too many request issues, may need to loop individually over each ticker as we did previously
+                    // push rather than concat to have parallel structure as bulkPxPromises of a separate array for each exchange
+                    singlePxPromises.push(singleTickerExSupportedTickers.map((ticker, idx) => singleTickerEx.fetchTicker(ticker)))   
                 }
                 
-                // Note unsupported exchanges
-                let unsupportedExs = exchangesObjs.filter((ex, i) => !bulkFetchIdxs[i] && ex.id != 'coinbasepro')
+                // Note unsupported exchanges that don't fall into either previous category
+                let unsupportedExs = exchangesObjs.filter((ex, i) => !bulkFetchIdxs[i] && !singleTickerExsSupported.includes(ex.id))
                 if (unsupportedExs.length > 0) {
                     console.log(`Warning! Unsupported exchanges: ${unsupportedExs.map((ex,idx) => ex.id).join(', ')}`)
                 }
@@ -200,9 +210,11 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                     // the entire array, we convert them to a single volume weighted average.
                     tickersRet.forEach(tickerSymbol => {
                         pxsEx[tickerSymbol] = pxsEx[tickerSymbol] || [];
-                        pxsEx[tickerSymbol].push(
-                            (allRawData[i][tickerSymbol].bid + allRawData[i][tickerSymbol].ask) / 2
-                        );
+                        let pxQuote = (allRawData[i][tickerSymbol].bid + allRawData[i][tickerSymbol].ask) / 2 || allRawData[i][tickerSymbol].last
+                        if (math.isNaN(pxQuote)) {
+                            return;
+                        }
+                        pxsEx[tickerSymbol].push(pxQuote);
                         volsEx[tickerSymbol] = volsEx[tickerSymbol] || [];
                         volsEx[tickerSymbol].push(
                             populateQuoteVolume(allRawData[i][tickerSymbol]).quoteVolume || 0
@@ -250,6 +262,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                     }
                 });
 
+                // Format for upload
                 var combinedExs = bulkTickerExs.concat(singleTickerExs)
                 let quotesFlat = allRawData.map((exRets, i) => {
                     return Object.entries(exRets).map(([ticker, quote], j) => {
@@ -261,21 +274,21 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                             timestamp: quote['timestamp'],
                             base: quote['symbol'].split('/')[1], 
                             ticker: ticker,
-                            priceBase: (quote['bid'] + quote['ask'])/2,
-                            priceUSD : ((quote['bid'] + quote['ask'])/2) * baseAltPxsMap.get(quote['symbol'].split('/')[1]),
+                            priceBase: (quote['bid'] + quote['ask'])/2 || quote['last'],
+                            priceUSD : ((quote['bid'] + quote['ask'])/2 || quote['last']) * baseAltPxsMap.get(quote['symbol'].split('/')[1]),
                             volumeBase: populateQuoteVolume(allRawData[i][ticker]).quoteVolume || 0,
                             volumeUSD:  (populateQuoteVolume(allRawData[i][ticker]).quoteVolume || 0) * baseAltPxsMap.get(quote['symbol'].split('/')[1]),
                             bid: quote['bid'],
                             ask: quote['ask'],
-                            mid: (quote['average']),
+                            mid: (quote['average'] || (quote['bid'] + quote['ask'])/2),
                             baseToUSD: baseAltPxsMap.get(quote['symbol'].split('/')[1])
-
                         };
                     });
                 }).reduce((partial_list, a) => [...partial_list, ...a], []);
                 console.log(`\tGot ${quotesFlat.length} quotes\n`)
 
-                Exchangetable.insert(quotesFlat, insertHandler)
+                // upload data to DB
+                // Exchangetable.insert(quotesFlat, insertHandler)
             }
 
             catch(error){
