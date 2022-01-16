@@ -14,8 +14,9 @@ const {BigQuery} = require('@google-cloud/bigquery');
 
 const bigquery = new BigQuery();
 const dataset = bigquery.dataset('FTSO');
+// const dataset = bigquery.dataset('FTSO_test');
 const Exchangetable = dataset.table('ExchangeData');
-const modelTable = dataset.table('ExchangeData');
+const modelPriceTable = dataset.table('ModelPrice');
 
 var orig = console.log
 console.log = function log() {
@@ -296,86 +297,259 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
 
 
                 // Fit model if the time is right and if we haven't already
-                if (startTimeToEpochEnd <= 30 && !submittedModelPrices) {
-                    console.log('\tKicked off query to calculate model price')
-                    // TODO: fetch only the model params and calculate locally
-                    // Add health checks
-                    let query = `
-                        DECLARE maxExDataEpoch DEFAULT (
-                            SELECT MAX(epochID)
-                            FROM \`bbftso-329118.FTSO.ExchangeData\`  
-                        );
-                        DECLARE latestExDataTime DEFAULT (
-                            SELECT MIN(timeToEpochEnd)
-                            FROM \`bbftso-329118.FTSO.ExchangeData\`  
-                            WHERE epochID = maxExDataEpoch
-                        );
+                if (timeToEpochEnd <= 30 && !submittedModelPrices) {
+
+
+                    // ////// ******** SANITY CHECK / TESTING BELOW **********
+                    // console.log('\tKicked off query to calculate model price')
+                    // // TODO: fetch only the model params and calculate locally
+                    // // Add health checks
+                    // // ***NOTE***: THE BELOW TEST QUERIES ARE RUNNING ON THE FTSO_test DB
+                    // let query = `
+                    //     DECLARE maxExDataEpoch DEFAULT (
+                    //         SELECT MAX(epochID)
+                    //         FROM \`bbftso-329118.FTSO_test.ExchangeData\`  
+                    //     );
+                    //     DECLARE latestExDataTime DEFAULT (
+                    //         SELECT MIN(timeToEpochEnd)
+                    //         FROM \`bbftso-329118.FTSO_test.ExchangeData\`  
+                    //         WHERE epochID = maxExDataEpoch
+                    //     );
+                    //     DECLARE maxModelEpoch DEFAULT (
+                    //         SELECT MAX(epochId) 
+                    //         FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                    //         WHERE modelId = 'Raw_Exchange_Px_Regression'
+                    //     );
+
+                    //     INSERT INTO \`bbftso-329118.FTSO_test.ModelPrice\` (modelId, symbol, epochId, modelPrice, timestamp)
+                    //     WITH exData AS (
+                    //         SELECT
+                    //              asset
+                    //             ,base
+                    //             ,exchange
+                    //             ,AVG(priceBase) AS priceBase
+                    //             ,epochId
+                    //         FROM \`bbftso-329118.FTSO_test.ExchangeData\` 
+                    //         WHERE 
+                    //             epochId = maxExDataEpoch
+                    //         AND timeToEpochEnd = GREATEST(latestExDataTime, 30)
+                    //         GROUP BY asset, base, exchange, epochId
+                    //     )
+                    //     ,modParams AS (
+                    //         SELECT
+                    //              symbol
+                    //             ,value 
+                    //             ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(0)], r'[\\"\\'\\(\\) ]', '') AS base
+                    //             ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(1)], r'[\\"\\'\\(\\) ]', '') AS exchange
+                    //         FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                    //         WHERE modelId = 'Raw_Exchange_Px_Regression'
+                    //         AND epochId = maxModelEpoch
+                    //     )
+                    //     ,combData AS (
+                    //         SELECT 
+                    //              p.*
+                    //             ,d.priceBase
+                    //             ,d.epochId
+                    //         FROM modParams p
+                    //         LEFT JOIN exData d
+                    //             ON p.symbol    = d.asset
+                    //             AND p.base      = d.base
+                    //             AND p.exchange  = d.exchange
+                    //     )
+                    //     SELECT 
+                    //         'Raw_Exchange_Px_Regression' AS modelId
+                    //         ,symbol
+                    //         ,MAX(epochId) AS epochId
+                    //         ,CAST(SUM(value * priceBase) AS NUMERIC) AS modelPrice
+                    //         ,CURRENT_TIMESTAMP() AS timestamp
+                    //     FROM combData
+                    //     GROUP BY symbol
+                    //     ORDER BY symbol
+                    // `;
+                    // try {
+                    //     var queryRes = await bigquery.query(query);
+                    //     console.log('\tFinished query to calculate model price');
+                    //     submittedModelPrices = true;
+                    // }
+                    // catch(error) {
+                    //     console.log(`BigQuery error:\n  ${error}`);
+                    //     throw 'BigQuery error fetching model prices';
+                    // }
+
+                    // // Select results calculated in previous query
+                    // let query2 = `
+                    //     SELECT * 
+                    //     FROM \`bbftso-329118.FTSO_test.ModelPrice\`
+                    //     WHERE modelId = 'Raw_Exchange_Px_Regression'
+                    //     AND timestamp = (
+                    //         SELECT MAX(timestamp) 
+                    //         FROM \`bbftso-329118.FTSO_test.ModelPrice\`
+                    //         WHERE modelId = 'Raw_Exchange_Px_Regression'
+                    //     )
+                    // `;
+            
+                    // var modelPricesRaw2 = (await bigquery.query(query2))[0];
+                    // var modelPricesOut2 = {};
+                    // modelPricesRaw2.forEach(row => {
+                    //     modelPricesOut2[row['symbol']] = row['modelPrice'].toNumber()
+                    // });
+
+                    // // Sanity check for the above two queries
+                    // let query0 = `
+                    //     DECLARE maxExDataEpoch DEFAULT (
+                    //         SELECT MAX(epochID)
+                    //         FROM \`bbftso-329118.FTSO_test.ExchangeData\`  
+                    //     );
+                    //     DECLARE latestExDataTime DEFAULT (
+                    //         SELECT MIN(timeToEpochEnd)
+                    //         FROM \`bbftso-329118.FTSO_test.ExchangeData\`  
+                    //         WHERE epochID = maxExDataEpoch
+                    //     );
+                    //     DECLARE maxModelEpoch DEFAULT (
+                    //         SELECT MAX(epochId) 
+                    //         FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                    //         WHERE modelId = 'Raw_Exchange_Px_Regression'
+                    //     );
+                    //     WITH exData AS (
+                    //         SELECT
+                    //             asset
+                    //             ,base
+                    //             ,exchange
+                    //             ,AVG(priceBase) as priceBase
+                    //             ,epochId
+                    //         FROM \`bbftso-329118.FTSO_test.ExchangeData\` 
+                    //         WHERE 
+                    //             epochId = maxExDataEpoch
+                    //         --AND timeToEpochEnd = latestExDataTime
+                    //         AND timeToEpochEnd = GREATEST(latestExDataTime, 30)
+                    //         GROUP BY asset, base, exchange, epochId
+                    //     )
+                    //     ,modParams AS (
+                    //         SELECT
+                    //             symbol
+                    //             ,value 
+                    //             ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(0)], r'[\\"\\'\\(\\) ]', '') AS base
+                    //             ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(1)], r'[\\"\\'\\(\\) ]', '') AS exchange
+                    //         FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                    //         WHERE modelId = 'Raw_Exchange_Px_Regression'
+                    //         AND epochId = maxModelEpoch
+                    //     )
+                    //     ,combData AS (
+                    //         SELECT 
+                    //             p.*
+                    //             ,d.priceBase
+                    //             ,d.epochId
+                    //         FROM modParams p
+                    //         LEFT JOIN exData d
+                    //             ON p.symbol    = d.asset
+                    //             AND p.base      = d.base
+                    //             AND p.exchange  = d.exchange
+                    //     )
+                    //     SELECT 
+                    //         symbol
+                    //         ,SUM(value * priceBase) AS modelPrice
+                    //         ,MAX(epochID) as dataEpoch
+                    //     FROM combData
+                    //     GROUP BY symbol
+                    //     ORDER BY symbol
+                    // `;
+                    // var modelPricesRaw0 = (await bigquery.query(query0))[0];
+                    // var modelPricesOut0 = {};
+                    // modelPricesRaw0.forEach(row => {
+                    //     modelPricesOut0[row['symbol']] = row['modelPrice'].toNumber()
+                    // });
+
+                    // // // Sanity check prices
+                    // // assets.map(a => (pxsModelDict[a] - modelPricesOut0[a])/modelPricesOut0[a])
+                    // // assets.map(a => (pxsModelDict[a] - modelPricesOut0[a])/modelPricesOut2[a])
+                    // // console.log(`Calculated model price locally`);
+
+
+
+
+
+
+                    console.log(`\tCalculating model price and storing`);
+                    // Fetch latest model parameters
+                    console.log(`\tGetting model params`);
+                    let modParamsQuery = `
                         DECLARE maxModelEpoch DEFAULT (
                             SELECT MAX(epochId) 
-                            FROM \`bbftso-329118.FTSO.ModelParams\` 
+                            FROM \`bbftso-329118.FTSO_test.ModelParams\` 
                             WHERE modelId = 'Raw_Exchange_Px_Regression'
                         );
-
-                        INSERT INTO \`bbftso-329118.FTSO.ModelPrice\` (modelId, symbol, epochId, modelPrice, timestamp)
-                        WITH exData AS (
-                            SELECT
-                                 asset
-                                ,base
-                                ,exchange
-                                ,AVG(priceBase) AS priceBase
-                                ,epochId
-                            FROM \`bbftso-329118.FTSO.ExchangeData\` 
-                            WHERE 
-                                epochId = maxExDataEpoch
-                            AND timeToEpochEnd = GREATEST(latestExDataTime, 30)
-                            GROUP BY asset, base, exchange, epochId
-                        )
-                        ,modParams AS (
-                            SELECT
-                                 symbol
-                                ,value 
-                                ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(0)], r'[\\"\\'\\(\\) ]', '') AS base
-                                ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(1)], r'[\\"\\'\\(\\) ]', '') AS exchange
-                            FROM \`bbftso-329118.FTSO.ModelParams\` 
-                            WHERE modelId = 'Raw_Exchange_Px_Regression'
-                            AND epochId = maxModelEpoch
-                        )
-                        ,combData AS (
-                            SELECT 
-                                 p.*
-                                ,d.priceBase
-                                ,d.epochId
-                            FROM modParams p
-                            LEFT JOIN exData d
-                                ON p.symbol    = d.asset
-                                AND p.base      = d.base
-                                AND p.exchange  = d.exchange
-                        )
-                        SELECT 
-                            'Raw_Exchange_Px_Regression' AS modelId
-                            ,symbol
-                            ,MAX(epochId) AS epochId
-                            ,CAST(SUM(value * priceBase) AS NUMERIC) AS modelPrice
-                            ,CURRENT_TIMESTAMP() AS timestamp
-                        FROM combData
-                        GROUP BY symbol
-                        ORDER BY symbol
+                        SELECT
+                                symbol
+                            ,value 
+                            ,parameter
+                            ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(0)], r'[\\"\\'\\(\\) ]', '') AS base
+                            ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(1)], r'[\\"\\'\\(\\) ]', '') AS exchange
+                        FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                        WHERE modelId = 'Raw_Exchange_Px_Regression'
+                        AND epochId = maxModelEpoch
                     `;
-                    try {
-                        var queryRes = await bigquery.query(query);
-                        console.log('\tFinished query to calculate model price');
-                        submittedModelPrices = true;
-                    }
-                    catch(error) {
-                        console.log(`BigQuery error:\n  ${error}`);
-                        throw 'BigQuery error fetching model prices';
-                    }
+                    let modParamsQueryRes = await bigquery.query(modParamsQuery);
+                    let modParams = modParamsQueryRes[0];
 
-                    // modelTable.insert(modelPrices, insertHandler)
+                    let combExsMap = new Map(
+                        combinedExs.map((c, i) => [c.id, i]) 
+                    );
+
+                    console.log(`\tCalculating model price locally`);
+                    // Calculate model price locally
+                    // initialize list of each model component for each asset
+                    let modPxsWeighted = {};
+                    assets.forEach((asset) => modPxsWeighted[asset] = []);
+                    let modPxsWeightedDetail = JSON.parse(JSON.stringify(modPxsWeighted));
+                    // map over model params and add weighted px to the appropriate lixt
+                    for (let paramRow of modParams) {
+                        let modRow = paramRow;
+                        let rowTicker = `${paramRow.symbol}/${paramRow.base}`;
+                        let rowQuote = allRawData[combExsMap.get(paramRow.exchange)][rowTicker];
+                        let rowPx = (rowQuote['bid'] + rowQuote['ask'])/2 || rowQuote['last'];
+                        let rowPxModWeighted = rowPx * paramRow.value.toNumber();
+                        modPxsWeighted[paramRow.symbol].push(rowPxModWeighted);
+                        // Testing
+                        modRow.price = rowPx;
+                        modRow.PxModWeighted = rowPxModWeighted;
+                        modRow.valueNum = modRow.value.toNumber();
+                        modPxsWeightedDetail[paramRow.symbol].push(modRow);
+                    };
+                    // quotesFlat.filter(x => x.asset == 'DGB' && ['USD', 'USDT'].includes(x.base))
+                    // sum up the results to get price
+                    let pxsModelDict = {};
+                    assets.forEach((asset) => pxsModelDict[asset] = math.sum(modPxsWeighted[asset]));
+                    
+                    // Prepare for upload
+                    // let calcTs = bigquery.timestamp(new Date());
+                    let calcTs = Math.floor(new Date().getTime()/1000); // bigquery.timestamp doesn't work for upload, use UNIX seconds instead
+                    let modelPxsUpload = assets.map((asset, i) => {
+                        return  {
+                            modelId: 'Raw_Exchange_Px_Regression',
+                            symbol: asset,
+                            epochId: loopEpoch,
+                            modelPrice: pxsModelDict[asset].toFixed(9),     // required for BigQuery upload
+                            timestamp: calcTs
+                        }
+                    });
+
+                    try {
+                        console.log(`\tUploading the following model prices:`);
+                        console.log(JSON.stringify(modelPxsUpload));
+                        // let modUploadRet = await modelPriceTable.insert(modelPxsUpload, insertHandler);
+                        let modUploadRet = await modelPriceTable.insert(modelPxsUpload);
+                        console.log('\tFinished uploading model price\n');
+                        submittedModelPrices = true;
+                    } 
+                    catch(error) {
+                        console.log(`BigQuery model price upload error:\n  ${error}`);
+                        // don't throw so that we can keep getting market prices even if something is wrong here
+                        // throw 'BigQuery error fetching model prices';    
+                    }
                 }
             }
 
-            catch(error){
+            catch(error) {
                 console.log(`CCXT API error:\n  ${error}`);
                 process.exit(1);
             }

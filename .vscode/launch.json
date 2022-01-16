@@ -11,10 +11,10 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}/src_prod/market_data_provider.ts",
-            "preLaunchTask": "tsc: build - tsconfig.json",
+            "program": "${workspaceFolder}/market_data_provider.ts",
+            // "preLaunchTask": "tsc: build - tsconfig.json",
             "outFiles": [
-                "${workspaceFolder}/scrc_prod/dist/*.js"
+                "${workspaceFolder}/dist/market_data_provider.js"
             ]
         }
     ]
