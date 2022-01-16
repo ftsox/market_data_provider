@@ -15,6 +15,7 @@ const {BigQuery} = require('@google-cloud/bigquery');
 const bigquery = new BigQuery();
 const dataset = bigquery.dataset('FTSO');
 const Exchangetable = dataset.table('ExchangeData');
+const modelTable = dataset.table('ExchangeData');
 
 var orig = console.log
 console.log = function log() {
@@ -126,7 +127,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
         let nextEpochEnd = nextEpoch * submitPeriod + firstEpochStartTime;
 
         // flag for if we have submitted model price yet this epoch
-        let submittedModelPrice = false
+        let submittedModelPrices = false
 
         // Loop over desired time snapshots
         for (var timeToEpochEnd of timeToEpochEndList) {
@@ -292,6 +293,86 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
 
                 // upload data to DB
                 Exchangetable.insert(quotesFlat, insertHandler)
+
+
+                // Fit model if the time is right and if we haven't already
+                if (startTimeToEpochEnd <= 30 && !submittedModelPrices) {
+                    console.log('\tKicked off query to calculate model price')
+                    // TODO: fetch only the model params and calculate locally
+                    // Add health checks
+                    let query = `
+                        DECLARE maxExDataEpoch DEFAULT (
+                            SELECT MAX(epochID)
+                            FROM \`bbftso-329118.FTSO.ExchangeData\`  
+                        );
+                        DECLARE latestExDataTime DEFAULT (
+                            SELECT MIN(timeToEpochEnd)
+                            FROM \`bbftso-329118.FTSO.ExchangeData\`  
+                            WHERE epochID = maxExDataEpoch
+                        );
+                        DECLARE maxModelEpoch DEFAULT (
+                            SELECT MAX(epochId) 
+                            FROM \`bbftso-329118.FTSO.ModelParams\` 
+                            WHERE modelId = 'Raw_Exchange_Px_Regression'
+                        );
+
+                        INSERT INTO \`bbftso-329118.FTSO.ModelPrice\` (modelId, symbol, epochId, modelPrice, timestamp)
+                        WITH exData AS (
+                            SELECT
+                                 asset
+                                ,base
+                                ,exchange
+                                ,AVG(priceBase) AS priceBase
+                                ,epochId
+                            FROM \`bbftso-329118.FTSO.ExchangeData\` 
+                            WHERE 
+                                epochId = maxExDataEpoch
+                            AND timeToEpochEnd = GREATEST(latestExDataTime, 30)
+                            GROUP BY asset, base, exchange, epochId
+                        )
+                        ,modParams AS (
+                            SELECT
+                                 symbol
+                                ,value 
+                                ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(0)], r'[\\"\\'\\(\\) ]', '') AS base
+                                ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(1)], r'[\\"\\'\\(\\) ]', '') AS exchange
+                            FROM \`bbftso-329118.FTSO.ModelParams\` 
+                            WHERE modelId = 'Raw_Exchange_Px_Regression'
+                            AND epochId = maxModelEpoch
+                        )
+                        ,combData AS (
+                            SELECT 
+                                 p.*
+                                ,d.priceBase
+                                ,d.epochId
+                            FROM modParams p
+                            LEFT JOIN exData d
+                                ON p.symbol    = d.asset
+                                AND p.base      = d.base
+                                AND p.exchange  = d.exchange
+                        )
+                        SELECT 
+                            'Raw_Exchange_Px_Regression' AS modelId
+                            ,symbol
+                            ,MAX(epochId) AS epochId
+                            ,CAST(SUM(value * priceBase) AS NUMERIC) AS modelPrice
+                            ,CURRENT_TIMESTAMP() AS timestamp
+                        FROM combData
+                        GROUP BY symbol
+                        ORDER BY symbol
+                    `;
+                    try {
+                        var queryRes = await bigquery.query(query);
+                        console.log('\tFinished query to calculate model price');
+                        submittedModelPrices = true;
+                    }
+                    catch(error) {
+                        console.log(`BigQuery error:\n  ${error}`);
+                        throw 'BigQuery error fetching model prices';
+                    }
+
+                    // modelTable.insert(modelPrices, insertHandler)
+                }
             }
 
             catch(error){
