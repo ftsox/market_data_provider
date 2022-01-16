@@ -125,6 +125,9 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
         let nextEpoch = currentEpoch + 1;
         let nextEpochEnd = nextEpoch * submitPeriod + firstEpochStartTime;
 
+        // flag for if we have submitted model price yet this epoch
+        let submittedModelPrice = false
+
         // Loop over desired time snapshots
         for (var timeToEpochEnd of timeToEpochEndList) {
             try {
@@ -288,7 +291,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                 console.log(`\tGot ${quotesFlat.length} quotes\n`)
 
                 // upload data to DB
-                // Exchangetable.insert(quotesFlat, insertHandler)
+                Exchangetable.insert(quotesFlat, insertHandler)
             }
 
             catch(error){
