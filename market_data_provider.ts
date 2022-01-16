@@ -208,7 +208,10 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
         let singleTickerExs = exchangesObjs.filter((ex, i) => !bulkFetchIdxs[i] && ex.id == 'coinbasepro')
         for (let singleTickerEx of singleTickerExs) {
             if (singleTickerEx.id == 'coinbasepro') {
-                let singleTickerExSupportedTickers = tickersFull.filter((ticker, idx) => singleTickerEx.symbols.includes(ticker))
+                // need to filter out XRP/USD from Coinbase
+                let singleTickerExSupportedTickers = tickersFull.filter(
+                    (ticker, idx) => singleTickerEx.symbols.includes(ticker) && ticker != 'XRP/USD'
+                )
                 // TODO: this may cause too many request issues, may need to loop individually over each ticker as we did previously
                 // push rather than concat to have parallel structure as bulkPxPromises of a separate array for each exchange
                 singlePxPromises.push(singleTickerExSupportedTickers.map((ticker, idx) => singleTickerEx.fetchTicker(ticker)))
