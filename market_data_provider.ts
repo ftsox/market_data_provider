@@ -606,7 +606,8 @@ async function main() {
     submitPeriod = 180;
     revealPeriod = 90;
     decimals = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
-    symbols = ['XRP', 'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH', 'DGB', 'BTC', 'ETH', 'FIL'];
+    // symbols = ['XRP', 'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH', 'DGB', 'BTC', 'ETH', 'FIL'];
+    symbols = ['XRP', 'LTC', 'XLM', 'DOGE', 'ADA', 'ALGO', 'BCH', 'DGB', 'BTC', 'ETH', 'FIL', 'SGB'];
 
     var initialEpoch = Math.floor(((await getTime()) - firstEpochStartTime) / submitPeriod);
     await getPrices(initialEpoch, symbols, decimals);    
