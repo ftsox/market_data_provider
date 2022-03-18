@@ -518,7 +518,21 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                     // quotesFlat.filter(x => x.asset == 'DGB' && ['USD', 'USDT'].includes(x.base))
                     // sum up the results to get price
                     let pxsModelDict = {};
-                    assets.forEach((asset) => pxsModelDict[asset] = math.sum(modPxsWeighted[asset]));
+                    // assets.forEach((asset) => pxsModelDict[asset] = math.sum(modPxsWeighted[asset]));
+                    assets.forEach((asset) => {
+                        if (modPxsWeighted[asset].length > 0) {
+                            // we have a model price, so use that
+                            pxsModelDict[asset] = math.sum(modPxsWeighted[asset])
+                        } else {
+                            // we don't have a valid fitted model, so just use naive average over USD and USDT
+                            let assetQuotes = quotesFlat.filter(x => x.asset == asset && ['USD', 'USDT'].includes(x.base));
+                            if (assetQuotes.length > 0) {
+                                pxsModelDict[asset] = math.mean(assetQuotes.map(x => (x['bid'] + x['ask']) / 2 || x['last']));
+                            } else {
+                                pxsModelDict[asset] = 0;
+                            }
+                        }
+                    });
                     
                     // Prepare for upload
                     // let calcTs = bigquery.timestamp(new Date());
