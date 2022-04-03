@@ -318,6 +318,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                     //     DECLARE maxModelEpoch DEFAULT (
                     //         SELECT MAX(epochId) 
                     //         FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                    //         --FROM \`bbftso-329118.FTSO.ModelParams\` 
                     //         WHERE modelId = 'Raw_Exchange_Px_Regression'
                     //     );
 
@@ -342,6 +343,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                     //             ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(0)], r'[\\"\\'\\(\\) ]', '') AS base
                     //             ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(1)], r'[\\"\\'\\(\\) ]', '') AS exchange
                     //         FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                    //         --FROM \`bbftso-329118.FTSO.ModelParams\` 
                     //         WHERE modelId = 'Raw_Exchange_Px_Regression'
                     //         AND epochId = maxModelEpoch
                     //     )
@@ -408,6 +410,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                     //     DECLARE maxModelEpoch DEFAULT (
                     //         SELECT MAX(epochId) 
                     //         FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                    //         --FROM \`bbftso-329118.FTSO.ModelParams\` 
                     //         WHERE modelId = 'Raw_Exchange_Px_Regression'
                     //     );
                     //     WITH exData AS (
@@ -431,6 +434,7 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                     //             ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(0)], r'[\\"\\'\\(\\) ]', '') AS base
                     //             ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(1)], r'[\\"\\'\\(\\) ]', '') AS exchange
                     //         FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                    //         --FROM \`bbftso-329118.FTSO.ModelParams\` 
                     //         WHERE modelId = 'Raw_Exchange_Px_Regression'
                     //         AND epochId = maxModelEpoch
                     //     )
@@ -475,7 +479,8 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                     let modParamsQuery = `
                         DECLARE maxModelEpoch DEFAULT (
                             SELECT MAX(epochId) 
-                            FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                            --FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                            FROM \`bbftso-329118.FTSO.ModelParams\` 
                             WHERE modelId = 'Raw_Exchange_Px_Regression'
                         );
                         SELECT
@@ -484,7 +489,8 @@ async function getPricesCCXT(epochId: number, assets: string[]) {
                             ,parameter
                             ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(0)], r'[\\"\\'\\(\\) ]', '') AS base
                             ,REGEXP_REPLACE(SPLIT(parameter, ',')[SAFE_OFFSET(1)], r'[\\"\\'\\(\\) ]', '') AS exchange
-                        FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                        --FROM \`bbftso-329118.FTSO_test.ModelParams\` 
+                        FROM \`bbftso-329118.FTSO.ModelParams\` 
                         WHERE modelId = 'Raw_Exchange_Px_Regression'
                         AND epochId = maxModelEpoch
                     `;
