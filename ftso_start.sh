@@ -18,12 +18,10 @@ node ./market_data_provider.js  >> $DIR/$FILE 2>&1 & echo FTSO started with PID 
 while :
 do
 sleep 1m
-if ps | grep "market_data_provider" | grep market_data_provider >/dev/null
-then 
-    echo $(date), "Market Data Provider is Healthy" >> $DIR/$FILE
-else
-    echo $(date), "Market Data Provider is dead - Restarting" >> $DIR/$FILE
-    node ./market_data_provider.js  >> $DIR/$FILE 2>&1 & echo FTSO started with PID $! 
+pidof node >/dev/null
+if [[ $? -ne 0 ]] ; then
+        echo "Restarting Market Data Provider:     $(date)" >> $DIR/$FILE
+        node ./market_data_provider.js  >> $DIR/$FILE 2>&1 & echo FTSO started with PID $! 
 fi
 
 
